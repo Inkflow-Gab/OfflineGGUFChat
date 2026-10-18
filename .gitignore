@@ -1,0 +1,37 @@
+# --- Gradle / Android build output ---
+.gradle/
+build/
+*/build/
+app/build/
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+.externalNativeBuild/
+.cxx/
+app/.cxx/
+app/src/main/jniLibs/**/*.so
+
+# --- Signing material: never commit these ---
+keystore.properties
+*.jks
+*.keystore
+*.p12
+
+# --- Local machine config ---
+local.properties
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+.kotlin/
+
+# --- Vendored native engine (opt-in, see scripts/sync-llama.sh) ---
+app/llama-cpp/
+
+# --- Scratch ---
+*.log
+*.gguf
+!app/src/main/assets/**

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Monochrome line icon. Drawn with strokes and tinted at the use site, so one
+     asset works in both the paper and the ink theme. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FF000000">
+    <path
+        android:pathData="M12 20.2 C5.6 15.4 2.8 12.2 2.8 8.7 A4.6 4.6 0 0 1 12 6.1 A4.6 4.6 0 0 1 21.2 8.7 C21.2 12.2 18.4 15.4 12 20.2 Z"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+</vector>

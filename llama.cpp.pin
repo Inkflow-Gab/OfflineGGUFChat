@@ -1,0 +1,11 @@
+# The llama.cpp revision this native bridge is written and verified against.
+#
+# scripts/sync-llama.sh reads this file. Bumping the tag means re-running the
+# capability probes in app/cpp/CMakeLists.txt: every llama.cpp symbol the bridge
+# touches is guarded by an OFFLINEGGUF_LLAMA_HAS_* macro, so an API change shows
+# up as a missing probe rather than a confusing compile error.
+LLAMA_CPP_REPO=https://github.com/ggml-org/llama.cpp
+LLAMA_CPP_TAG=b11721
+LLAMA_CPP_COMMIT=ff5a23376725e5a889fa0bfb987b7541dc304da0
+# Header the build refuses to proceed without when the engine is enabled.
+LLAMA_CPP_HEADER=include/llama.h
