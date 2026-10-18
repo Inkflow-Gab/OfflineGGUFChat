@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Vector fallback for older devices. Use the SVG for high-res generation. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="512dp"
+    android:height="512dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <group>
+        <path
+            android:pathData="M40,40 L472,40 L472,472 L40,472 Z"
+            android:fillColor="#03DAC6"
+            android:strokeWidth="0"/>
+    </group>
+</vector>
