@@ -294,3 +294,50 @@ abstract class SkillDao {
         }
     }
 }
+
+@Dao
+abstract class WorkspaceDao {
+
+    @Query("SELECT * FROM workspace_files WHERE conversationId = :conversationId ORDER BY updatedAt DESC, name ASC")
+    abstract fun observeFor(conversationId: Long): Flow<List<WorkspaceFileEntity>>
+
+    @Query("SELECT COUNT(*) FROM workspace_files WHERE conversationId = :conversationId")
+    abstract fun observeCountFor(conversationId: Long): Flow<Int>
+
+    @Query("SELECT * FROM workspace_files WHERE id = :id")
+    abstract suspend fun findById(id: Long): WorkspaceFileEntity?
+
+    @Query("SELECT * FROM workspace_files WHERE conversationId = :conversationId AND name = :name")
+    abstract suspend fun find(conversationId: Long, name: String): WorkspaceFileEntity?
+
+    @Insert
+    abstract suspend fun insert(file: WorkspaceFileEntity): Long
+
+    @Query("UPDATE workspace_files SET content = :content, language = :language, updatedAt = :now WHERE id = :id")
+    abstract suspend fun updateContent(id: Long, content: String, language: String, now: Long)
+
+    @Query("DELETE FROM workspace_files WHERE id = :id")
+    abstract suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM workspace_files WHERE conversationId = :conversationId")
+    abstract suspend fun deleteFor(conversationId: Long): Int
+
+    /** Saving the same name again updates it: one workspace slot per name. */
+    @Transaction
+    open suspend fun upsert(conversationId: Long, name: String, language: String, content: String): Long {
+        val existing = find(conversationId, name)
+        return if (existing != null) {
+            updateContent(existing.id, content, language, System.currentTimeMillis())
+            existing.id
+        } else {
+            insert(
+                WorkspaceFileEntity(
+                    conversationId = conversationId,
+                    name = name,
+                    language = language,
+                    content = content,
+                ),
+            )
+        }
+    }
+}

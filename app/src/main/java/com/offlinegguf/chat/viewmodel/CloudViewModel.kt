@@ -61,6 +61,14 @@ class CloudViewModel(private val container: AppContainer) : ViewModel() {
     /** Stored keys by provider id, used to refill the field on provider switch. */
     private var storedKeys: Map<String, String> = emptyMap()
 
+    /**
+     * Per-provider draft of what has been typed, mirroring DataStore in memory.
+     * Switching providers swaps the field instantly from here — the key you
+     * typed for one provider is never lost when you hop to another, even in the
+     * milliseconds before the DataStore write round-trips back.
+     */
+    private val drafts: MutableMap<String, String> = mutableMapOf()
+
     init {
         viewModelScope.launch {
             container.settings.settings.collect { settings ->
@@ -78,11 +86,18 @@ class CloudViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             container.settings.cloudApiKeys.collect { keys ->
                 storedKeys = keys
+                keys.forEach { (providerId, key) ->
+                    if (!drafts.containsKey(providerId)) drafts[providerId] = key
+                }
                 // Refill only when the field still shows the previously stored
                 // value (or nothing), so typing is never overwritten mid-stream.
                 _state.update { current ->
-                    val stored = keys[current.providerId].orEmpty()
-                    if (current.keyDraft.isBlank()) current.copy(keyDraft = stored) else current
+                    val draft = drafts[current.providerId].orEmpty()
+                    if (current.keyDraft.isBlank() || current.keyDraft == storedKeys[current.providerId]) {
+                        current.copy(keyDraft = draft)
+                    } else {
+                        current
+                    }
                 }
                 maybeAutoFetch()
             }
@@ -98,10 +113,20 @@ class CloudViewModel(private val container: AppContainer) : ViewModel() {
 
     fun selectProvider(providerId: String) {
         if (providerId == _state.value.providerId) return
+        val previous = _state.value
+        // Flush whatever was typed under the old provider before swapping, so a
+        // quick "type key, switch provider" can never file the key under the
+        // wrong id or drop it.
+        if (previous.keyDraft.isNotBlank()) {
+            drafts[previous.providerId] = previous.keyDraft
+            viewModelScope.launch {
+                container.settings.setCloudApiKey(previous.providerId, previous.keyDraft)
+            }
+        }
         _state.update {
             it.copy(
                 providerId = providerId,
-                keyDraft = storedKeys[providerId].orEmpty(),
+                keyDraft = drafts[providerId] ?: storedKeys[providerId].orEmpty(),
                 error = null,
             )
         }
@@ -112,9 +137,11 @@ class CloudViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun onKeyChange(value: String) {
+        val providerId = _state.value.providerId
+        drafts[providerId] = value
         _state.update { it.copy(keyDraft = value) }
         viewModelScope.launch {
-            container.settings.setCloudApiKey(_state.value.providerId, value)
+            container.settings.setCloudApiKey(providerId, value)
         }
     }
 

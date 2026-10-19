@@ -181,3 +181,30 @@ data class SkillEntity(
     /** How often it has been applied — used to order the picker. */
     val useCount: Int = 0,
 )
+
+/**
+ * One file in a conversation's workspace.
+ *
+ * Every session history gets its own workspace: code the user saves from an
+ * answer, or pages saved from the web sandbox, live here keyed by name. Saving
+ * the same name again updates the file, so `index.html` is always the current
+ * draft rather than a pile of copies.
+ */
+@Entity(
+    tableName = "workspace_files",
+    indices = [
+        Index("conversationId"),
+        Index(value = ["conversationId", "name"], unique = true),
+    ],
+)
+data class WorkspaceFileEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val conversationId: Long,
+    val name: String,
+    val language: String = "",
+    val content: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+) {
+    val lineCount: Int get() = if (content.isEmpty()) 0 else content.split('\n').size
+}

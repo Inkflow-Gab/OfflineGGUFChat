@@ -572,12 +572,19 @@ class ChatViewModel(
                     ?: model?.nCtx?.takeIf { it > 0 }
                     ?: container.deviceProfile.suggestedContext
             }
-            val window = PromptWindow.fit(system, turns, promptContext, sampling.maxTokens)
-            val prompt = PromptFormatter.render(
-                style = snapshot.templateStyle,
-                system = system,
-                turns = window.turns,
-            )
+            // Windowing and prompt rendering are pure string work over the
+            // whole transcript; on long chats that is real CPU, so it runs off
+            // the main thread and the composer stays responsive.
+            val window = withContext(Dispatchers.Default) {
+                PromptWindow.fit(system, turns, promptContext, sampling.maxTokens)
+            }
+            val prompt = withContext(Dispatchers.Default) {
+                PromptFormatter.render(
+                    style = snapshot.templateStyle,
+                    system = system,
+                    turns = window.turns,
+                )
+            }
             val windowNotice = when {
                 window.droppedTurns > 0 && window.clippedLatestTurn ->
                     "Using recent turns; older chat and part of the newest turn are omitted to fit this model's context. The full transcript is saved."
@@ -953,6 +960,23 @@ class ChatViewModel(
                 }
             }
         }.getOrElse { ReadResult.Failed(it.message ?: "Could not read that file") }
+    }
+
+    // ------------------------------------------------------------ workspace
+
+    /**
+     * Save a snippet into this session's workspace. Overwrites by name, so
+     * re-saving `index.html` updates the one file instead of piling up copies.
+     */
+    fun saveCodeToWorkspace(content: String, name: String, language: String = "") {
+        val conversationId = _state.value.conversationId
+        val resolvedLanguage = language.ifBlank {
+            name.substringAfterLast('.', "").lowercase()
+        }
+        viewModelScope.launch {
+            container.workspaceRepository.save(conversationId, name, resolvedLanguage, content)
+            _state.update { it.copy(notice = "Saved “$name” to this session's workspace.") }
+        }
     }
 
     // ---------------------------------------------------------------- export

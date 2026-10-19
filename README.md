@@ -3,8 +3,8 @@
 A quiet, black-and-white Android app for talking to GGUF language models that live
 on your phone. No account, no API key, no phoning home: on-device inference is the
 default and the identity of the app. Since 1.4 there is also an *optional* Cloud
-tab — bring your own free key (OpenRouter, Groq, NVIDIA) — which is off until you
-turn it on, and the only thing in the app that can open a socket.
+tab — bring your own free key (OpenRouter, Groq, NVIDIA, OpenCode Zen) — which is
+off until you turn it on, and the only thing in the app that can open a socket.
 
 ```
 ┌──────────────────────────────────────┐
@@ -103,13 +103,25 @@ holds code, diffs and gauges does not need a fourth visual channel. See
 
 **Cloud (opt-in, off by default)**
 
-- OpenRouter, Groq, NVIDIA, or any OpenAI-compatible server (llama.cpp /
+- OpenRouter, Groq, NVIDIA, OpenCode Zen (free staples like Big Pickle and
+  the rotating `*-free` lineup), or any OpenAI-compatible server (llama.cpp /
   LM Studio / Ollama on your LAN). Paste a free API key, browse the live
   model list with **FREE badges**, a free-only filter, prices and context
   sizes, then tap a model to chat with it. Streaming, the thinking channel,
   stop/continue/regenerate and the transcript all behave exactly like a
   local model. Keys live in app-private storage, outside the settings
   snapshot, and are sent only to the provider you picked.
+
+**Navigation**
+
+**Workspace + web sandbox (per session)**
+
+- Every session history gets its own workspace: snippets saved from answers
+  and pages saved from the sandbox live there, keyed by name, and never leak
+  into other chats. Re-saving `index.html` updates the one file.
+- HTML, CSS and JS code blocks carry a ▶ button that runs them in a locked-down
+  WebView: JavaScript on, but the network, file system and DOM storage off —
+  even `fetch()` cannot phone home. `console.log` is mirrored into the page.
 
 **Navigation**
 
@@ -193,7 +205,8 @@ app/src/main/java/com/offlinegguf/chat/
   util/         formatting, streaming UTF-8 decoder, diff engine, markdown blocks
   data/gguf/    GGUF types + the sequential header reader
   data/catalog/ bundled model catalogue and the device-aware advisor
-  data/cloud/   opt-in OpenAI-compatible providers (OpenRouter/Groq/NVIDIA/custom)
+  data/cloud/   opt-in OpenAI-compatible providers (OpenRouter/Groq/NVIDIA/OpenCode Zen/custom)
+  data/workspace/  per-session workspace files + the sandbox document shell
   data/local/   Room entities, DAOs, database
   data/settings/DataStore-backed preferences
   data/repository/  model, chat and skill repositories
@@ -203,7 +216,8 @@ app/src/main/java/com/offlinegguf/chat/
   inference/    JNI bindings, stream coalescer, thinking parser, prompt templates
   ui/theme/     ink palette, type scale, motion spec, spacing grid
   ui/components/code block, markdown, message row, gauges, input bar
-  ui/screens/   chat, models, model detail, discover, cloud, skills, settings, history
+  ui/screens/   chat, models, model detail, discover, cloud, skills, settings, history,
+                workspace, sandbox
   viewmodel/    one per screen
 app/src/test/   JVM unit tests (no emulator, no mocking framework)
 app/cpp/        GGUF probe, UTF-8 framer, JNI layer, two engine bridges

@@ -90,6 +90,8 @@ fun ChatScreen(
     onOpenSettings: () -> Unit,
     onOpenSkills: () -> Unit,
     onOpenCloud: () -> Unit,
+    onOpenWorkspace: (conversationId: Long) -> Unit,
+    onOpenSandbox: () -> Unit,
 ) {
     val viewModel: ChatViewModel = viewModel(
         key = "chat-${conversationId ?: 0}",
@@ -108,27 +110,9 @@ fun ChatScreen(
     var menuOpen by remember { mutableStateOf(false) }
     var modeMenuOpen by remember { mutableStateOf(false) }
     var showGauge by remember { mutableStateOf(false) }
-    var pendingCodeSave by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { viewModel.attach(it) }
-    }
-    val saveCodeFile = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
-        val pending = pendingCodeSave
-        pendingCodeSave = null
-        if (uri != null && pending != null) {
-            scope.launch {
-                val saved = withContext(Dispatchers.IO) {
-                    runCatching {
-                        val output = context.contentResolver.openOutputStream(uri)
-                            ?: error("Could not open the destination file")
-                        output.use { it.write(pending.first.toByteArray(Charsets.UTF_8)) }
-                    }
-                }
-                saved.onSuccess { viewModel.reportNotice("Saved ${pending.second}") }
-                    .onFailure { viewModel.reportError(it.message ?: "Could not save the code file") }
-            }
-        }
     }
 
     // Follow the answer while it streams, unless the user scrolled back to read.
@@ -279,6 +263,13 @@ fun ChatScreen(
                                 },
                             )
                         }
+                        DropdownMenuItem(
+                            text = { Text("Workspace") },
+                            leadingIcon = {
+                                Icon(painterResource(R.drawable.ic_folder), null, Modifier.size(16.dp))
+                            },
+                            onClick = { menuOpen = false; onOpenWorkspace(state.conversationId) },
+                        )
                         DropdownMenuItem(
                             text = { Text("Skills") },
                             leadingIcon = {
@@ -448,8 +439,18 @@ fun ChatScreen(
                         canContinue = state.continuableMessageId == message.id,
                         onContinue = { viewModel.continueMessage(message.id) },
                         onSaveCode = { code, fileName ->
-                            pendingCodeSave = code to fileName
-                            saveCodeFile.launch(fileName)
+                            viewModel.saveCodeToWorkspace(code, fileName)
+                        },
+                        onRunCode = { code, fileName, language ->
+                            container.requestSandbox(
+                                com.offlinegguf.chat.data.workspace.SandboxRequest(
+                                    language = language,
+                                    content = code,
+                                    name = fileName,
+                                    conversationId = state.conversationId,
+                                ),
+                            )
+                            onOpenSandbox()
                         },
                         onEdit = { viewModel.startEditing(message.id, message.content) },
                         onDeleteFrom = { viewModel.deleteFrom(message.id) },

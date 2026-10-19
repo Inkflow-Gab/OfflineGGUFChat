@@ -80,7 +80,11 @@ fun CodeBlock(
     previous: String? = null,
     showLineNumbers: Boolean = true,
     terminated: Boolean = true,
+    /** Suppresses the line diff while the block is still growing. */
+    streaming: Boolean = false,
     onSaveCode: (content: String, fileName: String) -> Unit = { _, _ -> },
+    /** Present for web snippets: runs them in the sandbox. */
+    onRunCode: ((content: String, fileName: String, language: String) -> Unit)? = null,
 ) {
     val palette = OfflineGgufTheme.diff
     val spacing = OfflineGgufTheme.spacing
@@ -91,8 +95,10 @@ fun CodeBlock(
     val unified = remember(content, isDiffOutput) {
         if (isDiffOutput) UnifiedDiff.parse(content) else null
     }
-    val computed = remember(content, previous) {
-        if (previous != null && !isDiffOutput) LineDiffer.diff(previous, content) else null
+    // The line diff is O(revision size) per update; while tokens are still
+    // arriving it is recomputed on every flush, so it waits for the final text.
+    val computed = remember(content, previous, streaming) {
+        if (previous != null && !isDiffOutput && !streaming) LineDiffer.diff(previous, content) else null
     }
     var showChanges by remember(content, previous) { mutableStateOf(false) }
     var expanded by remember(content) { mutableStateOf(false) }
@@ -165,6 +171,26 @@ fun CodeBlock(
                         Text(
                             text = if (showChanges) "Whole file" else "Changes",
                             style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                }
+                val runnable = onRunCode != null && !isDiffOutput &&
+                    com.offlinegguf.chat.data.workspace.SandboxDocument.isWebLanguage(language)
+                if (runnable && onRunCode != null) {
+                    IconButton(
+                        onClick = {
+                            val safeName = filename?.substringAfterLast('/')?.substringAfterLast('\\')
+                                ?.takeIf { it.isNotBlank() }
+                                ?: com.offlinegguf.chat.data.workspace.SandboxDocument.fileNameFor(language, null)
+                            onRunCode(content, safeName, language)
+                        },
+                        modifier = Modifier.size(34.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_play),
+                            contentDescription = "Run in sandbox",
+                            modifier = Modifier.size(15.dp),
+                            tint = colors.onSurface,
                         )
                     }
                 }

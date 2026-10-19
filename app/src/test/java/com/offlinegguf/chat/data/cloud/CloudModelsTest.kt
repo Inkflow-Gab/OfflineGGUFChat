@@ -114,4 +114,60 @@ class CloudModelsTest {
             CloudProvider.OPENROUTER.resolveBaseUrl("http://ignored"),
         )
     }
+
+    @Test
+    fun `opencode zen free models are detected by id and name`() {
+        val body = """
+            {"data":[
+              {"id":"big-pickle","object":"model","created":1770000000},
+              {"id":"mimo-v2.5-free","object":"model","created":1770000001},
+              {"id":"kimi-k2","object":"model","created":1770000002},
+              {"id":"nemotron-3-ultra-free","object":"model","created":1770000003}
+            ]}
+        """.trimIndent()
+        val models = CloudModels.parseModels(body, "opencode")
+        assertEquals(4, models.size)
+        assertTrue(models.first { it.id == "big-pickle" }.isFree)
+        assertTrue(models.first { it.id == "mimo-v2.5-free" }.isFree)
+        assertTrue(models.first { it.id == "nemotron-3-ultra-free" }.isFree)
+        assertFalse(models.first { it.id == "kimi-k2" }.isFree)
+        // Free first, then alphabetical.
+        assertEquals("big-pickle", models.first().id)
+    }
+
+    @Test
+    fun `opencode zen provider speaks the openai dialect`() {
+        val zen = CloudProvider.byId("opencode")
+        assertEquals("https://opencode.ai/zen/v1", zen.resolveBaseUrl(""))
+        assertEquals("https://opencode.ai/auth", zen.keyUrl)
+        assertTrue(zen.requiresKey)
+    }
+
+    @Test
+    fun `finish reason is carried through chunks`() {
+        val done = CloudModels.parseChunk(
+            """{"choices":[{"delta":{},"finish_reason":"length"}]}""",
+        )
+        assertEquals("length", done?.finishReason)
+
+        val stop = CloudModels.parseChunk(
+            """{"choices":[{"delta":{"content":"."},"finish_reason":"stop"}]}""",
+        )
+        assertEquals("stop", stop?.finishReason)
+    }
+
+    @Test
+    fun `whole non-streamed completions parse to one delta`() {
+        val delta = CloudModels.parseCompletion(
+            """
+            {"choices":[{"message":{"role":"assistant","content":"Full answer"},"finish_reason":"stop"}],
+             "usage":{"prompt_tokens":7,"completion_tokens":9}}
+            """.trimIndent(),
+        )
+        assertEquals("Full answer", delta?.content)
+        assertEquals("stop", delta?.finishReason)
+        assertEquals(7, delta?.promptTokens)
+        assertEquals(9, delta?.completionTokens)
+        assertNull(CloudModels.parseCompletion("<html>gateway error</html>"))
+    }
 }

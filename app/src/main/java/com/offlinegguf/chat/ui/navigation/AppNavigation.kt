@@ -43,7 +43,9 @@ import com.offlinegguf.chat.ui.screens.HistoryScreen
 import com.offlinegguf.chat.ui.screens.ModelDetailScreen
 import com.offlinegguf.chat.ui.screens.ModelsScreen
 import com.offlinegguf.chat.ui.screens.SettingsScreen
+import com.offlinegguf.chat.ui.screens.SandboxScreen
 import com.offlinegguf.chat.ui.screens.SkillsScreen
+import com.offlinegguf.chat.ui.screens.WorkspaceScreen
 import com.offlinegguf.chat.ui.theme.OfflineGgufTheme
 
 /** Bottom-bar destinations. Everything else is pushed on top of these. */
@@ -64,8 +66,12 @@ object Routes {
     const val SKILLS = "skills"
     const val SETTINGS = "settings"
     const val HISTORY = "history"
+    const val SANDBOX = "sandbox"
+    const val WORKSPACE = "workspace/{conversationId}"
 
     fun chat(conversationId: Long) = "chat/$conversationId"
+
+    fun workspace(conversationId: Long) = "workspace/$conversationId"
 
     /** File paths contain '/' and sometimes '#', both of which break a route. */
     fun modelDetail(path: String) = "model/${Uri.encode(path)}"
@@ -218,6 +224,8 @@ fun AppNavigation(
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     onOpenSkills = { navController.navigate(Routes.SKILLS) },
                     onOpenCloud = { navController.navigateToTab(Routes.CLOUD) },
+                    onOpenWorkspace = { id -> navController.navigate(Routes.workspace(id)) },
+                    onOpenSandbox = { navController.navigate(Routes.SANDBOX) },
                 )
             }
 
@@ -232,6 +240,8 @@ fun AppNavigation(
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     onOpenSkills = { navController.navigate(Routes.SKILLS) },
                     onOpenCloud = { navController.navigateToTab(Routes.CLOUD) },
+                    onOpenWorkspace = { cid -> navController.navigate(Routes.workspace(cid)) },
+                    onOpenSandbox = { navController.navigate(Routes.SANDBOX) },
                 )
             }
 
@@ -281,9 +291,27 @@ fun AppNavigation(
                 )
             }
 
+            composable(Routes.SANDBOX) {
+                SandboxScreen(
+                    container = container,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(Routes.WORKSPACE) { entry ->
+                val id = entry.arguments?.getString("conversationId")?.toLongOrNull() ?: -1L
+                WorkspaceScreen(
+                    container = container,
+                    conversationId = id,
+                    onBack = { navController.popBackStack() },
+                    onOpenSandbox = { navController.navigate(Routes.SANDBOX) },
+                )
+            }
+
             composable(Routes.HISTORY) {
                 HistoryScreen(
                     container = container,
+                    onOpenWorkspace = { id -> navController.navigate(Routes.workspace(id)) },
                     onOpenConversation = { id ->
                         navController.navigate(Routes.chat(id)) {
                             popUpTo(Routes.CHAT) { inclusive = false }

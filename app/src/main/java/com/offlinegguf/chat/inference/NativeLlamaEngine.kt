@@ -8,6 +8,7 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.channels.trySendBlocking
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -233,25 +234,29 @@ class NativeLlamaEngine : Closeable {
     fun stream(prompt: String, params: SamplingParams): Flow<EngineEvent> = callbackFlow {
         val session = handle.get()
         if (!LlamaNative.libraryLoaded) {
-            trySend(EngineEvent.Failed(LlamaNative.loadError ?: "native library not loaded"))
+            send(EngineEvent.Failed(LlamaNative.loadError ?: "native library not loaded"))
             close()
             return@callbackFlow
         }
         if (session == 0L) {
-            trySend(EngineEvent.Failed("no engine session — load a model first"))
+            send(EngineEvent.Failed("no engine session — load a model first"))
             close()
             return@callbackFlow
         }
 
         val decoder = StreamingUtf8Decoder()
+        // Tokens are delivered with backpressure: a full channel blocks the
+        // decode loop briefly instead of silently discarding text, so the
+        // answer always reaches the transcript complete. Cancellation closes
+        // the channel, which unblocks the loop at the next token.
         val callback = object : LlamaNative.GenerationCallback {
             override fun onTokenBytes(bytes: ByteArray) {
                 val text = decoder.feed(bytes)
-                if (text.isNotEmpty()) trySend(EngineEvent.Token(text))
+                if (text.isNotEmpty()) runCatching { trySendBlocking(EngineEvent.Token(text)) }
             }
 
             override fun onError(message: String) {
-                trySend(EngineEvent.Failed(message))
+                runCatching { trySendBlocking(EngineEvent.Failed(message)) }
             }
         }
 
@@ -278,12 +283,12 @@ class NativeLlamaEngine : Closeable {
         }
 
         val tail = decoder.flush()
-        if (tail.isNotEmpty()) trySend(EngineEvent.Token(tail))
+        if (tail.isNotEmpty()) runCatching { send(EngineEvent.Token(tail)) }
 
         if (stats == null) {
             val message = runCatching { LlamaNative.nativeLastError(session) }
                 .getOrDefault("generation did not start")
-            trySend(EngineEvent.Failed(message.ifBlank { "generation did not start" }))
+            runCatching { send(EngineEvent.Failed(message.ifBlank { "generation did not start" })) }
         } else {
             val parsed = GenerationStats.from(stats)
             val outcome = when {
@@ -291,7 +296,7 @@ class NativeLlamaEngine : Closeable {
                 parsed.truncated -> GenerationOutcome.TRUNCATED
                 else -> GenerationOutcome.COMPLETED
             }
-            trySend(EngineEvent.Finished(parsed, outcome))
+            runCatching { send(EngineEvent.Finished(parsed, outcome)) }
         }
         close()
 

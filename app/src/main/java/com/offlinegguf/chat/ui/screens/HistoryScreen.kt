@@ -61,6 +61,7 @@ import com.offlinegguf.chat.viewmodel.HistoryViewModel
 fun HistoryScreen(
     container: AppContainer,
     onOpenConversation: (Long) -> Unit,
+    onOpenWorkspace: (Long) -> Unit,
     onBack: () -> Unit,
 ) {
     val viewModel: HistoryViewModel = viewModel(factory = HistoryViewModel.factory(container))
@@ -154,6 +155,7 @@ fun HistoryScreen(
                     ConversationCard(
                         conversation = conversation,
                         onOpen = { onOpenConversation(conversation.id) },
+                        onWorkspace = { onOpenWorkspace(conversation.id) },
                         onPin = { viewModel.setPinned(conversation.id, !conversation.pinned) },
                         onArchive = { viewModel.setArchived(conversation.id, !conversation.archived) },
                         onRename = { renaming = conversation },
@@ -268,6 +270,7 @@ fun HistoryScreen(
 private fun ConversationCard(
     conversation: ConversationEntity,
     onOpen: () -> Unit,
+    onWorkspace: () -> Unit,
     onPin: () -> Unit,
     onArchive: () -> Unit,
     onRename: () -> Unit,
@@ -321,6 +324,10 @@ private fun ConversationCard(
                     DropdownMenuItem(
                         text = { Text("Rename") },
                         onClick = { menuOpen = false; onRename() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Workspace") },
+                        onClick = { menuOpen = false; onWorkspace() },
                     )
                     DropdownMenuItem(
                         text = { Text(if (conversation.archived) "Restore" else "Archive") },

@@ -5,14 +5,16 @@ package com.offlinegguf.chat.data.cloud
  *
  * Cloud is **off by default** and stays off until the user enables it and pastes
  * their own API key. With cloud disabled nothing in the app opens a socket; the
- * INTERNET permission exists solely for this opt-in path. The three built-ins
- * were picked because each has a genuinely usable free tier:
+ * INTERNET permission exists solely for this opt-in path. The built-ins were
+ * picked because each has a genuinely usable free tier:
  *
  * - **OpenRouter** — one key for hundreds of models, many with `:free` variants.
  * - **Groq** — LPU inference, very fast, generous free tier.
  * - **NVIDIA NIM** — free API credits on build.nvidia.com for most open models.
+ * - **OpenCode Zen** — the OpenCode team's curated gateway, with genuinely free
+ *   models (`big-pickle`, `*-free`) behind a free key from opencode.ai/auth.
  *
- * The fourth slot is any OpenAI-compatible endpoint the user points at: a
+ * The last slot is any OpenAI-compatible endpoint the user points at: a
  * llama.cpp server, LM Studio or Ollama on the same Wi-Fi, or another host.
  */
 data class CloudProvider(
@@ -55,6 +57,15 @@ data class CloudProvider(
             blurb = "NVIDIA-hosted open models (Llama, Qwen, DeepSeek…) with free API credits.",
         )
 
+        val OPENCODE = CloudProvider(
+            id = "opencode",
+            label = "OpenCode Zen",
+            baseUrl = "https://opencode.ai/zen/v1",
+            keyUrl = "https://opencode.ai/auth",
+            blurb = "The OpenCode team's curated models. Free staples like Big Pickle " +
+                "and the rotating *-free lineup; sign in with GitHub/Google for a key.",
+        )
+
         val CUSTOM = CloudProvider(
             id = "custom",
             label = "Custom",
@@ -65,7 +76,7 @@ data class CloudProvider(
             custom = true,
         )
 
-        val ALL: List<CloudProvider> = listOf(OPENROUTER, GROQ, NVIDIA, CUSTOM)
+        val ALL: List<CloudProvider> = listOf(OPENROUTER, GROQ, NVIDIA, OPENCODE, CUSTOM)
 
         fun byId(id: String?): CloudProvider = ALL.firstOrNull { it.id == id } ?: OPENROUTER
     }
