@@ -30,13 +30,24 @@ class ThinkingParser {
     private data class Marker(val open: String, val close: String)
 
     private val markers = listOf(
-        Marker("<think>", "</think>"),
-        Marker("<thinking>", "</thinking>"),
+        // Prefix, not a full tag: Qwen3 writes "<think" followed by a newline
+        // (no closing angle bracket), Qwen2.5-Thinking writes "<thinking>", and
+        // older builds use "<think>". One prefix covers all three and their
+        // closes, so a reasoning block can never leak into the answer — which
+        // is exactly what happened when the marker was the literal "<think>".
+        Marker("<think", "</think>"),
         Marker("<|thinking|>", "<|/thinking|>"),
         Marker("<reasoning>", "</reasoning>"),
         Marker("<|reasoning|>", "<|/reasoning|>"),
         Marker("<|channel|>analysis<|message|>", "<|end|>"),
     )
+
+    /**
+     * Closes that do not belong to a marker above but are still unambiguous.
+     * `</thinking>` must be matched in full: a prefix match would leave the
+     * trailing ">" in the answer channel.
+     */
+    private val extraCloses = listOf("</thinking>", "</think >")
 
     /** Some builds use a single marker that flips the channel each time. */
     private val toggle = "***/"
@@ -114,8 +125,8 @@ class ThinkingParser {
         // tag: models mix them up, and getting stuck in THINKING is worse.
         Channel.THINKING -> {
             val specific = active?.close
-            if (specific != null) listOf(specific, toggle) + markers.map { it.close }
-            else markers.map { it.close } + toggle
+            if (specific != null) listOf(specific) + extraCloses + markers.map { it.close } + toggle
+            else extraCloses + markers.map { it.close } + toggle
         }
     }
 
@@ -202,7 +213,7 @@ class ThinkingParser {
         /** True when a block of text contains any known reasoning marker. */
         fun looksLikeReasoning(text: String): Boolean {
             val lower = text.lowercase()
-            return lower.contains("<think>") || lower.contains("<thinking>") ||
+            return lower.contains("<think") || lower.contains("<thinking>") ||
                 lower.contains("<reasoning>") || lower.contains("<|reasoning|>") ||
                 text.contains("***/")
         }

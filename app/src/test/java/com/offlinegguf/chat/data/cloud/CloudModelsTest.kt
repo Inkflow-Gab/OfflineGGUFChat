@@ -228,4 +228,46 @@ class CloudModelsTest {
         assertEquals(9, delta?.completionTokens)
         assertNull(CloudModels.parseCompletion("<html>gateway error</html>"))
     }
+
+    @Test
+    fun `gemini is a first class provider with the documented endpoint`() {
+        val gemini = CloudProvider.byId("gemini")
+        assertEquals("gemini", gemini.id)
+        assertEquals(
+            "https://generativelanguage.googleapis.com/v1beta/openai",
+            gemini.resolveBaseUrl("http://ignored"),
+        )
+        assertEquals("https://aistudio.google.com/apikey", gemini.keyUrl)
+
+        // Every built-in provider is reachable from the picker, including the
+        // newer ones, and Custom stays last.
+        val ids = CloudProvider.ALL.map { it.id }
+        assertTrue(ids.containsAll(listOf("openrouter", "gemini", "groq", "cerebras", "mistral", "nvidia", "opencode")))
+        assertEquals("custom", ids.last())
+    }
+
+    @Test
+    fun `gemini catalog strips the models prefix and drops non chat entries`() {
+        val body = """
+            {"data":[
+              {"id":"models/gemini-3.8-flash","name":"Gemini 3.8 Flash"},
+              {"id":"models/gemini-3.1-pro"},
+              {"id":"models/text-embedding-005"},
+              {"id":"models/imagen-4"},
+              {"id":"models/gemini-tts"},
+              {"id":"gemini-2.5-flash-lite"}
+            ]}
+        """.trimIndent()
+        val models = CloudModels.parseModels(body, "gemini")
+        val ids = models.map { it.id }.toSet()
+        assertEquals(setOf("gemini-3.8-flash", "gemini-3.1-pro", "gemini-2.5-flash-lite"), ids)
+        // Personal-key Gemini usage is free-tier, like Groq/NVIDIA.
+        assertTrue(models.all { it.isFree })
+    }
+
+    @Test
+    fun `embedding models are hidden from every catalog`() {
+        val body = """{"data":[{"id":"mistral-embed"},{"id":"mistral-small-latest"}]}"""
+        assertEquals(listOf("mistral-small-latest"), CloudModels.parseModels(body, "mistral").map { it.id })
+    }
 }

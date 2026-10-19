@@ -22,7 +22,7 @@ object CloudModels {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     /** Hosts whose personal keys are free to use for chat (no per-token price). */
-    private val freeTierProviders = setOf("groq", "nvidia")
+    private val freeTierProviders = setOf("groq", "nvidia", "gemini", "cerebras", "mistral")
 
     /**
      * Model ids that are free on a metered host. OpenCode Zen's `big-pickle` has
@@ -46,11 +46,23 @@ object CloudModels {
             ?: return emptyList()
         val freeTier = providerId in freeTierProviders
         val zen = providerId == "opencode"
+        val gemini = providerId == "gemini"
         return data.mapNotNull { element ->
             val obj = runCatching { element.jsonObject }.getOrNull() ?: return@mapNotNull null
             val rawId = obj.string("id")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-            // Catalogs sometimes carry the provider prefix (`opencode/big-pickle`).
-            val id = if (zen) rawId.removePrefix("opencode/") else rawId
+            // Catalogs sometimes carry a provider path prefix: Gemini lists
+            // `models/gemini-3.8-flash`, OpenCode lists `opencode/big-pickle`.
+            // The compat endpoints want the bare id.
+            val id = when {
+                gemini -> rawId.removePrefix("models/")
+                zen -> rawId.removePrefix("opencode/")
+                else -> rawId
+            }
+            // Gemini's catalog also carries embeddings, TTS, image and video
+            // models; none of them answer a chat/completions request.
+            if (gemini && !isGeminiChatModel(id)) return@mapNotNull null
+            // Mistral/Cerebras list embedding models in the same catalog.
+            if (!gemini && id.contains("embed", ignoreCase = true)) return@mapNotNull null
             // Zen also lists /responses- and /messages-only models. Our client
             // speaks chat/completions, so offering those would guarantee a 400.
             if (zen && !isChatCompletionsModel(id)) return@mapNotNull null
@@ -80,6 +92,16 @@ object CloudModels {
     private val zenMessagesOnly = setOf(
         "qwen3.8-flash", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus", "qwen3.5-plus",
     )
+
+    /** Gemini ids that speak chat/completions rather than embed/images/tts. */
+    fun isGeminiChatModel(id: String): Boolean {
+        val lower = id.lowercase()
+        val excluded = listOf(
+            "embedding", "embed-", "aqa", "imagen", "veo", "tts", "image-generation",
+            "native-audio", "live-", "learnlm",
+        )
+        return excluded.none { lower.contains(it) }
+    }
 
     fun isChatCompletionsModel(id: String): Boolean =
         zenResponsesPrefixes.none { id.startsWith(it) } && id !in zenMessagesOnly

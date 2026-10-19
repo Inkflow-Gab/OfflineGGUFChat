@@ -47,6 +47,7 @@ object DeviceProbe {
             totalStorageBytes = storage.second,
             pageSizeBytes = pageSizeBytes(),
             lowRamDevice = lowRam,
+            performanceCores = performanceCores(cores),
             engineAvailable = engineAvailable,
         )
     }
@@ -80,6 +81,30 @@ object DeviceProbe {
     }.getOrDefault(0.0)
 
     /**
+     * How many cores sit in the fastest clock bin — the "big" cluster on a
+     * big.LITTLE SoC. Read from sysfs the same defensive way as [maxCpuMhz].
+     *
+     * Returns 0 when the kernel hides frequencies (then callers fall back to
+     * all cores), and 0 when every core reports the same clock (a uniform CPU
+     * has no little cluster to avoid).
+     */
+    fun performanceCores(cores: Int): Int = runCatching {
+        if (cores <= 2) return 0
+        val root = File("/sys/devices/system/cpu")
+        val clocks = (0 until cores).map { index ->
+            val node = File(root, "cpu$index/cpufreq/cpuinfo_max_freq")
+            if (node.canRead()) node.readText().trim().toLongOrNull() ?: 0L else 0L
+        }
+        if (clocks.any { it <= 0L }) return 0
+        val fastest = clocks.maxOrNull() ?: 0L
+        if (fastest <= 0L) return 0
+        // Within 15% of the top bin counts as a performance core. A uniform CPU
+        // lands here with every core, which the caller treats as "no clusters".
+        val big = clocks.count { it >= (fastest * 0.85).toLong() }
+        if (big >= cores) 0 else big
+    }.getOrDefault(0)
+
+    /**
      * Kernel page size. Almost always 4096, but 16 KB page devices exist and a
      * native library linked without `max-page-size=16384` will not load there —
      * which is exactly what the diagnostics card wants to be able to explain.
@@ -101,6 +126,9 @@ object DeviceProbe {
     fun describe(profile: DeviceProfile): String = buildString {
         append("${(profile.ramBytes / (1024.0 * 1024 * 1024)).let { String.format(java.util.Locale.US, "%.1f", it) }} GB RAM")
         append(" · ${profile.cores} cores")
+        if (profile.performanceCores in 1..profile.cores) {
+            append(" (${profile.performanceCores} performance)")
+        }
         append(" · ${profile.tier.label}")
         if (profile.maxCpuMhz > 0) append(" · ${profile.maxCpuMhz.toInt()} MHz")
     }

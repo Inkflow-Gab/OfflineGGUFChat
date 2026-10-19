@@ -100,7 +100,7 @@ class ModelFitTest {
         assertEquals(3, device(cores = 4).suggestedThreads)
         assertEquals(1, device(cores = 2).suggestedThreads)
         assertEquals(512, device(8).suggestedBatch)
-        assertEquals(128, device(3).suggestedBatch)
+        assertEquals(256, device(3).suggestedBatch)
     }
 
     @Test

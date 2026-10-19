@@ -286,9 +286,30 @@ bool BridgeGenerate(BridgeSession *s, const std::string &prompt, const BridgeSam
 
     // ---- generation ---------------------------------------------------------
     ByteStream stream;
+
+    // Turn-ending markers, by family. `llama_vocab_is_eog` covers the true EOS
+    // and the usual chat end tokens, but not every GGUF marks its template's
+    // closing tag as EOG — and a model that runs past <|im_end|> keeps writing
+    // a hallucinated second turn until the token cap. Resolving the markers the
+    // vocab actually knows makes the answer stop at its own end: cleaner output
+    // and fewer wasted decode steps. Only single-token markers are used, so a
+    // multi-token sequence can never cut an answer mid-word.
+    std::vector<llama_token> stop_tokens = sp.stop_tokens;
+    if (stop_tokens.empty()) {
+        static const char *kMarkers[] = {
+            "<|im_end|>", "<|endoftext|>", "<|eot_id|>", "<|end_of_text|>",
+            "<|end|>", "<end_of_turn>", "</s>", "<|im_end|>\n",
+        };
+        for (const char *marker : kMarkers) {
+            compat::Tokens ids =
+                compat::Tokenize(s->model, marker, /* add_bos */ false, /* special */ true);
+            if (ids.size() == 1) stop_tokens.push_back(ids[0]);
+        }
+    }
+
     const auto is_stop = [&](llama_token t) {
         if (compat::IsEndOfGeneration(s->model, t)) return true;
-        return std::find(sp.stop_tokens.begin(), sp.stop_tokens.end(), t) != sp.stop_tokens.end();
+        return std::find(stop_tokens.begin(), stop_tokens.end(), t) != stop_tokens.end();
     };
 
     int32_t generated = 0;

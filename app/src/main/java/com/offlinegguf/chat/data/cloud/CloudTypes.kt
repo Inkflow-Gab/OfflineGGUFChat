@@ -82,6 +82,35 @@ data class CloudProvider(
             freeTierClientLocked = true,
         )
 
+        val GEMINI = CloudProvider(
+            id = "gemini",
+            label = "Google Gemini",
+            // Google's OpenAI-compatibility layer: same SDK shape as the rest,
+            // key from AI Studio, generous free tier on the Flash models.
+            baseUrl = "https://generativelanguage.googleapis.com/v1beta/openai",
+            keyUrl = "https://aistudio.google.com/apikey",
+            blurb = "Google's models through their OpenAI-compatible endpoint. " +
+                "Gemini Flash models have a free tier with a key from AI Studio.",
+        )
+
+        val CEREBRAS = CloudProvider(
+            id = "cerebras",
+            label = "Cerebras",
+            baseUrl = "https://api.cerebras.ai/v1",
+            keyUrl = "https://cloud.cerebras.ai/",
+            blurb = "Wafer-scale silicon: the fastest first token of any provider here. " +
+                "Free tier with a personal key.",
+        )
+
+        val MISTRAL = CloudProvider(
+            id = "mistral",
+            label = "Mistral",
+            baseUrl = "https://api.mistral.ai/v1",
+            keyUrl = "https://console.mistral.ai/api-keys",
+            blurb = "Mistral's own models, including the small fast ones. " +
+                "The free \"Experiment\" plan is enough for chat.",
+        )
+
         val CUSTOM = CloudProvider(
             id = "custom",
             label = "Custom",
@@ -92,7 +121,8 @@ data class CloudProvider(
             custom = true,
         )
 
-        val ALL: List<CloudProvider> = listOf(OPENROUTER, GROQ, NVIDIA, OPENCODE, CUSTOM)
+        val ALL: List<CloudProvider> =
+            listOf(OPENROUTER, GEMINI, GROQ, CEREBRAS, MISTRAL, NVIDIA, OPENCODE, CUSTOM)
 
         fun byId(id: String?): CloudProvider = ALL.firstOrNull { it.id == id } ?: OPENROUTER
     }

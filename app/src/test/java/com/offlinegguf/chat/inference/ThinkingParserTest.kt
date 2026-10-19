@@ -159,4 +159,22 @@ class ThinkingParserTest {
         assertFalse(ThinkingParser.looksLikeReasoning("a plain answer"))
         assertFalse(ThinkingParser.looksLikeReasoning("code with < and > signs"))
     }
+
+    @Test
+    fun `qwen3 think tag without a closing angle bracket stays out of the answer`() {
+        // Qwen3's reasoning block opens with "<think" + newline, with no ">".
+        // Before the prefix marker existed the whole block rendered as answer.
+        val parser = ThinkingParser()
+
+        val opened = parser.offer(" thinking\n")
+        assertEquals("", opened.answer)
+
+        val body = parser.offer("weighing the options\n")
+        assertEquals("", body.answer)
+        assertTrue(body.thinking.contains("weighing"))
+
+        val closed = parser.offer("Hi there")
+        assertEquals("Hi there", closed.answer)
+        assertTrue(parser.hasSeenThinking)
+    }
 }

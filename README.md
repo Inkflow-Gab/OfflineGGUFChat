@@ -3,9 +3,9 @@
 A quiet, black-and-white Android app for talking to GGUF language models that live
 on your phone. No account, no API key, no phoning home: on-device inference is the
 default and the identity of the app. Since 1.4 there is also an *optional* Cloud
-tab — bring your own key (free tiers on OpenRouter, Groq and NVIDIA; OpenCode
-Console pay-as-you-go) — which is off until you turn it on, and the only thing
-in the app that can open a socket.
+tab — bring your own key (free tiers on OpenRouter, Gemini, Groq, Cerebras,
+Mistral and NVIDIA; OpenCode Console pay-as-you-go) — which is off until you
+turn it on, and the only thing in the app that can open a socket.
 
 ```
 ┌──────────────────────────────────────┐
@@ -104,8 +104,9 @@ holds code, diffs and gauges does not need a fourth visual channel. See
 
 **Cloud (opt-in, off by default)**
 
-- OpenRouter, Groq, NVIDIA, OpenCode Console, or any OpenAI-compatible server
-  (llama.cpp / LM Studio / Ollama on your LAN). Paste an API key, browse the live
+- OpenRouter, **Google Gemini**, Groq, **Cerebras**, **Mistral**, NVIDIA,
+  OpenCode Console, or any OpenAI-compatible server (llama.cpp / LM Studio /
+  Ollama on your LAN). Paste an API key, browse the live
   model list with **FREE badges**, a free-only filter, prices and context
   sizes, then tap a model to chat with it. OpenCode's free models are labelled
   **IN-APP ONLY**: they answer 403 outside the OpenCode app by OpenCode's own
@@ -138,6 +139,19 @@ holds code, diffs and gauges does not need a fourth visual channel. See
   does not strip tokens after the fact. Off, a greeting is answered directly.
 - The model is loaded once and reused: opening an old chat no longer re-reads
   the weights or discards the KV cache.
+
+**Fast on a phone, not just correct**
+
+- Inference runs on the **performance cores**. ggml waits for its slowest worker,
+  so putting threads on a 6×A55 cluster makes every matmul finish at little-core
+  speed — the app reads the CPU clock bins and keeps workers on the big cluster.
+- The whole native engine is built `-O3` (ggml's hot loops are C, not C++), KV
+  cache defaults to q8_0 when the phone is tight on RAM, and prompt batches got
+  larger so prefill needs fewer decode calls.
+- Generation stops at the model's own turn-end token instead of running on to
+  the token cap, so answers finish cleanly and quickly.
+- Qwen3-style ` thinking` blocks are recognised as reasoning even without the
+  closing angle bracket, so they never leak into the answer.
 
 **Navigation**
 

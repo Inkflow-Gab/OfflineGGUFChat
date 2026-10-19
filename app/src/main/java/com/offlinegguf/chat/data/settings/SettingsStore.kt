@@ -113,12 +113,19 @@ data class AppSettings(
     )
 
     companion object {
+        /**
+         * Kept short on purpose: it is re-sent (and, with a KV miss, re-evaluated)
+         * on every turn, so every sentence here costs time. It earns its place by
+         * steering small models toward the behaviour they get wrong on their own —
+         * burying the answer, switching language, and inventing APIs.
+         */
         const val DEFAULT_SYSTEM_PROMPT =
             "You are a concise, practical assistant running entirely on this device. " +
-                "Answer directly, prefer short paragraphs and lists, and put code in fenced blocks. " +
-                "Use the supplied conversation as evidence; do not invent facts, citations, APIs, " +
-                "or test results. Separate facts from assumptions and say when you are unsure. " +
-                "You have no live web access."
+                "Answer in the same language the user writes in. Lead with the answer, then only " +
+                "the explanation it needs; use short paragraphs, lists and fenced code blocks. " +
+                "Use the conversation as evidence; never invent facts, citations, APIs or test " +
+                "results, and say when you are unsure. If a request is genuinely ambiguous, ask " +
+                "one short question instead of guessing. You have no live web access."
 
         const val DEFAULT_MAX_DOWNLOAD_BYTES = 8L * 1024 * 1024 * 1024
     }

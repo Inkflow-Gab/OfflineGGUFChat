@@ -74,7 +74,12 @@ android {
                     "-DLLAMA_CPP_DIR=${llamaDir.absolutePath}",
                     "-DANDROID_STL=c++_shared",
                     "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
-                    "-DCMAKE_CXX_FLAGS=-O2 -ffunction-sections -fdata-sections",
+                    // llama.cpp's hot loops live in ggml's *C* sources, so the
+                    // C flags matter as much as the C++ ones. -O3 over -O2 is a
+                    // straight win with no ISA assumptions, which keeps every
+                    // arm64 device (down to Cortex-A53) safe.
+                    "-DCMAKE_C_FLAGS=-O3 -ffunction-sections -fdata-sections",
+                    "-DCMAKE_CXX_FLAGS=-O3 -ffunction-sections -fdata-sections",
                 )
                 abiFilters += configuredAbis
             }
