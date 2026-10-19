@@ -45,7 +45,9 @@ import com.offlinegguf.chat.data.catalog.ModelAdvisor
 import com.offlinegguf.chat.data.catalog.ModelStyle
 import com.offlinegguf.chat.domain.device.DeviceProfile
 import com.offlinegguf.chat.domain.fit.ModelFit
+import com.offlinegguf.chat.ui.components.ConfirmDialog
 import com.offlinegguf.chat.ui.components.Hairline
+import com.offlinegguf.chat.ui.components.InkButton
 import com.offlinegguf.chat.ui.components.InkChip
 import com.offlinegguf.chat.ui.components.InkTopBar
 import com.offlinegguf.chat.ui.components.KeyValueRow
@@ -79,8 +81,33 @@ fun DiscoverScreen(
     val spacing = OfflineGgufTheme.spacing
     val context = LocalContext.current
 
+    // 18+ gate: what to do once the user confirms (just unlock, or also enable
+    // the refusal-free filter they originally tapped).
+    var showAgeGate by remember { mutableStateOf(false) }
+    var enableAfterConfirm by remember { mutableStateOf(false) }
+
     fun open(url: String) {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+    }
+
+    fun requestAdult(enableFilter: Boolean) {
+        enableAfterConfirm = enableFilter
+        showAgeGate = true
+    }
+
+    if (showAgeGate) {
+        ConfirmDialog(
+            title = "Adults only · 18+",
+            body = "Refusal-free models are fine-tunes with the safety filter removed. They can " +
+                "produce explicit adult content, strong language and other material unsuitable " +
+                "for minors — with no warnings and no refusals.\n\n" +
+                "Confirm that you are at least 18 years old (or the age of majority where you " +
+                "live) to see and use them. You can turn this off again in Settings → Maturity.",
+            confirmLabel = "I am 18 or older",
+            dismissLabel = "Not now",
+            onConfirm = { viewModel.confirmMaturity(enableAfterConfirm) },
+            onDismiss = { showAgeGate = false },
+        )
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -120,8 +147,20 @@ fun DiscoverScreen(
                     preferSpeed = state.prefs.preferSpeed,
                     maxDownloadGb = (state.prefs.maxDownloadBytes / (1024L * 1024 * 1024)).toInt().coerceIn(1, 64),
                     computing = state.computing,
-                    onStyle = viewModel::setStyle,
-                    onUncensored = { viewModel.toggleUncensored() },
+                    onStyle = { style ->
+                        if (style == ModelStyle.UNCENSORED && !state.maturityConfirmed) {
+                            requestAdult(enableFilter = true)
+                        } else {
+                            viewModel.setStyle(style)
+                        }
+                    },
+                    onUncensored = {
+                        if (!state.prefs.uncensored && !state.maturityConfirmed) {
+                            requestAdult(enableFilter = true)
+                        } else {
+                            viewModel.toggleUncensored()
+                        }
+                    },
                     onPreferSpeed = { viewModel.togglePreferSpeed() },
                     onMaxGb = viewModel::setMaxDownloadGb,
                 )
@@ -135,11 +174,60 @@ fun DiscoverScreen(
                 )
             }
 
+            // ---- the one-tap answer for first-run: small, comfortable, good
+            state.starterPick?.let { starter ->
+                item(key = "starter") {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(colors.surfaceContainer, RoundedCornerShape(spacing.card))
+                            .padding(spacing.md),
+                    ) {
+                        SectionTitle(text = "Start here · best first download")
+                        Text(
+                            text = starter.model.displayName,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = colors.onSurface,
+                        )
+                        Text(
+                            text = "${Formats.bytes(starter.model.approxSizeBytes)} · ${starter.headline}" +
+                                if (starter.assessment.tokensPerSecond > 0) {
+                                    " · ~${Formats.fixed(starter.assessment.tokensPerSecond, 0)} tok/s"
+                                } else {
+                                    ""
+                                },
+                            style = MetaKeyText,
+                            color = colors.tertiary,
+                        )
+                        Text(
+                            text = starter.model.notes,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                        Spacer(Modifier.height(spacing.sm))
+                        Row(horizontalArrangement = Arrangement.spacedBy(spacing.sm)) {
+                            InkButton(
+                                label = "Download",
+                                icon = R.drawable.ic_download,
+                                onClick = { open(starter.model.primaryUrl) },
+                            )
+                            InkButton(
+                                label = "Model card",
+                                icon = R.drawable.ic_external,
+                                filled = false,
+                                onClick = { open(starter.model.modelCardUrl) },
+                            )
+                        }
+                    }
+                }
+            }
+
             // ---- refusal-free, before the general list: it is what people come here for
             if (state.uncensored.isNotEmpty()) {
                 item(key = "uncensored-header") {
                     Column {
-                        SectionTitle(text = "Refusal-free")
+                        SectionTitle(text = "Refusal-free · 18+")
                         Text(
                             text = "Fine-tunes with the refusal behaviour removed or reduced. They answer " +
                                 "directly instead of declining — including for things a filtered model " +
@@ -159,6 +247,34 @@ fun DiscoverScreen(
                         onOpenCard = { open(recommendation.model.modelCardUrl) },
                         onSearch = { open(recommendation.model.searchUrl) },
                     )
+                }
+            }
+
+            // ---- the same shelf, locked: visible so adults know it exists,
+            // empty so nobody unconfirmed sees a single mature entry.
+            if (!state.maturityConfirmed) {
+                item(key = "adult-locked") {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(colors.surfaceContainer, RoundedCornerShape(spacing.card))
+                            .padding(spacing.md),
+                    ) {
+                        SectionTitle(text = "Refusal-free · 18+")
+                        Text(
+                            text = "Uncensored and abliterated fine-tunes for every phone size, plus " +
+                                "roleplay models. This shelf is adults-only and stays hidden until " +
+                                "you confirm your age.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(spacing.sm))
+                        InkButton(
+                            label = "I am 18+ — unlock",
+                            icon = R.drawable.ic_shield,
+                            onClick = { requestAdult(enableFilter = false) },
+                        )
+                    }
                 }
             }
 
@@ -259,7 +375,7 @@ private fun DeviceCard(
             )
             Spacer(Modifier.width(6.dp))
             Text(
-                text = "$catalogCount catalogue entries scored locally. No INTERNET permission: " +
+                text = "$catalogCount catalogue entries scored locally. Discovery stays offline: " +
                     "links open in your browser.",
                 style = MetaKeyText,
                 color = colors.tertiary,
@@ -320,13 +436,13 @@ private fun PreferenceRow(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Refusal-free only",
+                    text = "Refusal-free only · 18+",
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = if (uncensored) FontWeight.SemiBold else FontWeight.Normal,
                     color = colors.onSurface,
                 )
                 Text(
-                    text = "Uncensored fine-tunes; answers without the filter.",
+                    text = "Uncensored fine-tunes; answers without the filter. Adults only.",
                     style = MetaKeyText,
                     color = colors.tertiary,
                 )

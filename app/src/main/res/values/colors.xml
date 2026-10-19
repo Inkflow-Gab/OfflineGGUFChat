@@ -6,5 +6,5 @@
     <color name="paper">#FFFFFFFF</color>
     <color name="window_light">#FFFFFFFF</color>
     <color name="window_dark">#FF0B0B0C</color>
-    <color name="launcher_background">#FF0B0B0C</color>
+    <color name="launcher_background">#FFF6F6F7</color>
 </resources>

@@ -218,6 +218,12 @@ object PromptFormatter {
         if (!template.contains("{{input}}")) {
             out = "$out\n\n$body"
         }
+        // Attachments must not disappear merely because a skill's user template
+        // only declares {{input}}. Explicit placeholders still let a skill place
+        // file contents exactly where its instructions expect them.
+        if (attachments.isNotEmpty() && !template.contains("{{attachments}}")) {
+            out = "$out\n\n--- Attached files ---\n$attachments"
+        }
         return out
     }
 }

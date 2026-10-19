@@ -136,6 +136,14 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         store.setSampling(change(_state.value.settings.sampling()))
     }
 
+    // ------------------------------------------------------- maturity & cloud
+
+    fun setMaturityConfirmed(value: Boolean) = launchEdit { store.setMaturityConfirmed(value) }
+
+    fun setCloudEnabled(value: Boolean) = launchEdit { store.setCloudEnabled(value) }
+
+    fun clearCloudTarget() = launchEdit { store.setCloudTarget(null) }
+
     private fun launchEdit(block: suspend () -> Unit) {
         viewModelScope.launch {
             runCatching { block() }.onFailure { error ->

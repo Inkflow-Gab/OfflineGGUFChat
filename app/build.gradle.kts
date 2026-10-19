@@ -20,6 +20,8 @@ plugins {
 //   keystore.properties OR KEYSTORE_FILE/KEYSTORE_PASSWORD/KEY_ALIAS/
 //   KEY_PASSWORD env vars       -> signed release APK. Without them the
 //   release build falls back to the debug key so CI artifacts stay installable.
+//   ONE keystore signs every release forever (scripts/setup-keystore.sh,
+//   docs/SIGNING.md) — that is what makes every future APK update in place.
 // ---------------------------------------------------------------------------
 fun flag(name: String): Boolean =
     (project.findProperty(name) as String?)?.toBooleanStrictOrNull() == true
@@ -59,8 +61,8 @@ android {
         applicationId = "com.offlinegguf.chat"
         minSdk = 24
         targetSdk = 34
-        versionCode = (project.findProperty("APP_VERSION_CODE") as String?)?.toIntOrNull() ?: 4
-        versionName = (project.findProperty("APP_VERSION_NAME") as String?) ?: "1.3.0"
+        versionCode = (project.findProperty("APP_VERSION_CODE") as String?)?.toIntOrNull() ?: 5
+        versionName = (project.findProperty("APP_VERSION_NAME") as String?) ?: "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

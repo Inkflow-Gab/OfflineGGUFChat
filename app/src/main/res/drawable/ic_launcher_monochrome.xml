@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Themed-icon (API 33+) silhouette of the launcher mark. The system tints by
+  alpha only, so the bubble, token lines and spark are one even-odd path:
+  the inner shapes punch holes instead of painting over.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M40 28 H68 C75.18 28 81 33.82 81 41 V59 C81 66.18 75.18 72 68 72 H54 L41 83 V72 H40 C32.82 72 27 66.18 27 59 V41 C27 33.82 32.82 28 40 28 Z M40 39 H61 A3 3 0 0 1 61 45 H40 A3 3 0 0 1 40 39 Z M40 49 H67 A3 3 0 0 1 67 55 H40 A3 3 0 0 1 40 49 Z M40 59 H49 A3 3 0 0 1 49 65 H40 A3 3 0 0 1 40 59 Z M63 55 L65.1 59.9 L70 62 L65.1 64.1 L63 69 L60.9 64.1 L56 62 L60.9 59.9 Z"
+        android:fillColor="#FF000000"
+        android:fillType="evenOdd" />
+</vector>

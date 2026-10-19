@@ -8,7 +8,8 @@ import kotlinx.serialization.json.Json
 /**
  * One curated GGUF build the app knows how to recommend.
  *
- * The app has no INTERNET permission and never downloads a model: entries carry
+ * Discovery never downloads a model (the INTERNET permission belongs to the
+ * opt-in Cloud tab alone): entries carry
  * links that open huggingface.co in the browser. Sizes and layer counts here are
  * *catalogue estimates* used to judge fit before a download; the moment a real
  * file is on the device, [com.offlinegguf.chat.data.gguf.GgufReader] replaces
@@ -31,6 +32,10 @@ data class CatalogModel(
     val languages: List<String> = emptyList(),
     val license: String = "",
     val uncensored: Boolean = false,
+    /** "general" or "mature". Mature entries sit behind the in-app 18+ confirmation. */
+    val maturity: String = "general",
+    /** Emits a visible thinking trace; the chat UI splits it into the reasoning channel. */
+    val reasoning: Boolean = false,
     val qualityScore: Int = 50,
     val released: String = "",
     val filePattern: String = "*.gguf",
@@ -55,6 +60,10 @@ data class CatalogModel(
     val primaryUrl: String get() = fileHint?.let { fileUrl(it) } ?: repoUrl
 
     fun hasStyle(styleId: String): Boolean = style.contains(styleId)
+
+    /** Adult shelf: refusal-free fine-tunes and anything the catalogue marks mature. */
+    val requiresAdult: Boolean
+        get() = uncensored || maturity.equals("mature", ignoreCase = true)
 
     /**
      * Whether this entry belongs in a result set built from [prefs], ignoring the
@@ -89,7 +98,9 @@ enum class ModelStyle(val id: String, val label: String, val blurb: String) {
     CODE("code", "Code", "Patches, explanations and review. Pairs with the diff view."),
     CHAT("chat", "Conversation", "Long, natural back-and-forth and roleplay."),
     ANALYSIS("analysis", "Analysis", "Extraction, structured output and careful reasoning."),
-    UNCENSORED("uncensored", "Refusal-free", "Fine-tunes with the refusal behaviour removed or reduced.");
+    REASONING("reasoning", "Reasoning", "Step-by-step thinking models for maths, logic and hard problems."),
+    ROLEPLAY("roleplay", "Roleplay & stories", "Characters, scenes and long-form fiction that stays in voice."),
+    UNCENSORED("uncensored", "Refusal-free · 18+", "Fine-tunes with the refusal behaviour removed or reduced.");
 
     companion object {
         fun fromId(id: String?): ModelStyle =

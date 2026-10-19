@@ -17,6 +17,19 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 
+/** Prompt and sampling preset selected from the chat toolbar. */
+enum class ChatMode(val label: String, val instruction: String) {
+    BALANCED("Balanced", "Be accurate and useful. Answer the actual question first, separate known facts from assumptions, and say when you are uncertain."),
+    FAST("Fast", "Give the shortest useful answer first. Skip background unless requested, and avoid repeating the question."),
+    CHAT("Chat", "Use a natural, warm conversational style. Keep the exchange engaging without inventing personal experiences or facts."),
+    CODING("Coding", "Act as a careful coding partner. Give runnable, maintainable code, preserve the user's conventions, and explain important assumptions or risks. For complete files of 50 or more lines, include the filename in the opening code fence, for example ```python main.py. Never claim code was tested unless it was."),
+    CAREFUL("Deep thinking", "Prioritize correctness over speed. Check the request for ambiguity and verify arithmetic, dates, and code logic where practical. Separate facts from assumptions, never invent citations or test results, and state uncertainty plainly. Give the concise conclusion first; add only a brief rationale, not hidden chain-of-thought.");
+
+    companion object {
+        fun fromName(name: String?): ChatMode = values().firstOrNull { it.name.equals(name, ignoreCase = true) } ?: BALANCED
+    }
+}
+
 /** Immutable snapshot of every user preference. */
 data class AppSettings(
     // ---- appearance ----
@@ -28,6 +41,7 @@ data class AppSettings(
 
     // ---- chat behaviour ----
     val showThinking: Boolean = true,
+    val chatMode: ChatMode = ChatMode.BALANCED,
     val keepScreenOn: Boolean = false,
     val autoLoadLastModel: Boolean = true,
     val confirmBeforeDelete: Boolean = true,
@@ -48,12 +62,38 @@ data class AppSettings(
     val advisorPreferSpeed: Boolean = true,
     val advisorMaxDownloadGb: Int = 8,
 
+    // ---- maturity ----
+    /** The user has confirmed they are 18+. Gates refusal-free / mature models. */
+    val maturityConfirmed: Boolean = false,
+
+    // ---- cloud (opt-in; off by default, keys live outside this snapshot) ----
+    val cloudEnabled: Boolean = false,
+    val cloudProviderId: String = "openrouter",
+    val cloudModelId: String = "",
+    val cloudModelName: String = "",
+    val cloudContextLength: Int = 0,
+    val cloudFreeOnly: Boolean = true,
+    val cloudCustomBaseUrl: String = "",
+
     // ---- state ----
     val lastConversationId: Long = -1L,
     val lastModelPath: String? = null,
     val onboarded: Boolean = false,
 ) {
     fun style(): ModelStyle = ModelStyle.fromId(advisorStyle)
+
+    /** The cloud model chat should talk to, or null for on-device inference. */
+    fun cloudTarget(): com.offlinegguf.chat.data.cloud.CloudTarget? =
+        if (cloudEnabled && cloudModelId.isNotBlank()) {
+            com.offlinegguf.chat.data.cloud.CloudTarget(
+                providerId = cloudProviderId,
+                modelId = cloudModelId,
+                displayName = cloudModelName.ifBlank { cloudModelId },
+                contextLength = cloudContextLength,
+            )
+        } else {
+            null
+        }
 
     fun sampling(): SamplingParams = SamplingParams(
         maxTokens = maxTokens,
@@ -68,7 +108,9 @@ data class AppSettings(
         const val DEFAULT_SYSTEM_PROMPT =
             "You are a concise, practical assistant running entirely on this device. " +
                 "Answer directly, prefer short paragraphs and lists, and put code in fenced blocks. " +
-                "If you are unsure, say so."
+                "Use the supplied conversation as evidence; do not invent facts, citations, APIs, " +
+                "or test results. Separate facts from assumptions and say when you are unsure. " +
+                "You have no live web access."
 
         const val DEFAULT_MAX_DOWNLOAD_BYTES = 8L * 1024 * 1024 * 1024
     }
@@ -92,6 +134,7 @@ class SettingsStore(private val context: Context) {
         val SHOW_LINE_NUMBERS = booleanPreferencesKey("show_line_numbers")
 
         val SHOW_THINKING = booleanPreferencesKey("show_thinking")
+        val CHAT_MODE = stringPreferencesKey("chat_mode")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val AUTO_LOAD_LAST = booleanPreferencesKey("auto_load_last_model")
         val CONFIRM_DELETE = booleanPreferencesKey("confirm_before_delete")
@@ -109,6 +152,16 @@ class SettingsStore(private val context: Context) {
         val ADVISOR_UNCENSORED = booleanPreferencesKey("advisor_uncensored")
         val ADVISOR_PREFER_SPEED = booleanPreferencesKey("advisor_prefer_speed")
         val ADVISOR_MAX_GB = intPreferencesKey("advisor_max_download_gb")
+
+        val MATURITY_CONFIRMED = booleanPreferencesKey("maturity_confirmed")
+
+        val CLOUD_ENABLED = booleanPreferencesKey("cloud_enabled")
+        val CLOUD_PROVIDER = stringPreferencesKey("cloud_provider_id")
+        val CLOUD_MODEL_ID = stringPreferencesKey("cloud_model_id")
+        val CLOUD_MODEL_NAME = stringPreferencesKey("cloud_model_name")
+        val CLOUD_CONTEXT = intPreferencesKey("cloud_context_length")
+        val CLOUD_FREE_ONLY = booleanPreferencesKey("cloud_free_only")
+        val CLOUD_CUSTOM_URL = stringPreferencesKey("cloud_custom_base_url")
 
         val LAST_CONVERSATION = intPreferencesKey("last_conversation_id")
         val LAST_MODEL_PATH = stringPreferencesKey("last_model_path")
@@ -129,6 +182,7 @@ class SettingsStore(private val context: Context) {
                 highContrast = prefs[Keys.HIGH_CONTRAST] ?: false,
                 showLineNumbers = prefs[Keys.SHOW_LINE_NUMBERS] ?: true,
                 showThinking = prefs[Keys.SHOW_THINKING] ?: true,
+                chatMode = ChatMode.fromName(prefs[Keys.CHAT_MODE]),
                 keepScreenOn = prefs[Keys.KEEP_SCREEN_ON] ?: false,
                 autoLoadLastModel = prefs[Keys.AUTO_LOAD_LAST] ?: true,
                 confirmBeforeDelete = prefs[Keys.CONFIRM_DELETE] ?: true,
@@ -144,6 +198,14 @@ class SettingsStore(private val context: Context) {
                 advisorUncensored = prefs[Keys.ADVISOR_UNCENSORED] ?: false,
                 advisorPreferSpeed = prefs[Keys.ADVISOR_PREFER_SPEED] ?: true,
                 advisorMaxDownloadGb = prefs[Keys.ADVISOR_MAX_GB] ?: 8,
+                maturityConfirmed = prefs[Keys.MATURITY_CONFIRMED] ?: false,
+                cloudEnabled = prefs[Keys.CLOUD_ENABLED] ?: false,
+                cloudProviderId = prefs[Keys.CLOUD_PROVIDER] ?: "openrouter",
+                cloudModelId = prefs[Keys.CLOUD_MODEL_ID] ?: "",
+                cloudModelName = prefs[Keys.CLOUD_MODEL_NAME] ?: "",
+                cloudContextLength = prefs[Keys.CLOUD_CONTEXT] ?: 0,
+                cloudFreeOnly = prefs[Keys.CLOUD_FREE_ONLY] ?: true,
+                cloudCustomBaseUrl = prefs[Keys.CLOUD_CUSTOM_URL] ?: "",
                 lastConversationId = (prefs[Keys.LAST_CONVERSATION] ?: -1).toLong(),
                 lastModelPath = prefs[Keys.LAST_MODEL_PATH],
                 onboarded = prefs[Keys.ONBOARDED] ?: false,
@@ -156,6 +218,7 @@ class SettingsStore(private val context: Context) {
     suspend fun setHighContrast(value: Boolean) = edit { it[Keys.HIGH_CONTRAST] = value }
     suspend fun setShowLineNumbers(value: Boolean) = edit { it[Keys.SHOW_LINE_NUMBERS] = value }
     suspend fun setShowThinking(value: Boolean) = edit { it[Keys.SHOW_THINKING] = value }
+    suspend fun setChatMode(mode: ChatMode) = edit { it[Keys.CHAT_MODE] = mode.name }
     suspend fun setKeepScreenOn(value: Boolean) = edit { it[Keys.KEEP_SCREEN_ON] = value }
     suspend fun setAutoLoadLastModel(value: Boolean) = edit { it[Keys.AUTO_LOAD_LAST] = value }
     suspend fun setConfirmBeforeDelete(value: Boolean) = edit { it[Keys.CONFIRM_DELETE] = value }
@@ -188,6 +251,64 @@ class SettingsStore(private val context: Context) {
     }
 
     suspend fun setOnboarded(value: Boolean) = edit { it[Keys.ONBOARDED] = value }
+
+    suspend fun setMaturityConfirmed(value: Boolean) = edit {
+        it[Keys.MATURITY_CONFIRMED] = value
+        // Revoking the confirmation also clears the refusal-free preference, so
+        // the adult shelf cannot stay half-enabled behind a locked gate.
+        if (!value) it[Keys.ADVISOR_UNCENSORED] = false
+    }
+
+    suspend fun setCloudEnabled(value: Boolean) = edit { it[Keys.CLOUD_ENABLED] = value }
+
+    suspend fun setCloudProvider(providerId: String) = edit { it[Keys.CLOUD_PROVIDER] = providerId }
+
+    suspend fun setCloudTarget(target: com.offlinegguf.chat.data.cloud.CloudTarget?) = edit {
+        if (target == null) {
+            it.remove(Keys.CLOUD_MODEL_ID)
+            it.remove(Keys.CLOUD_MODEL_NAME)
+            it.remove(Keys.CLOUD_CONTEXT)
+        } else {
+            it[Keys.CLOUD_PROVIDER] = target.providerId
+            it[Keys.CLOUD_MODEL_ID] = target.modelId
+            it[Keys.CLOUD_MODEL_NAME] = target.displayName
+            it[Keys.CLOUD_CONTEXT] = target.contextLength
+        }
+    }
+
+    suspend fun setCloudFreeOnly(value: Boolean) = edit { it[Keys.CLOUD_FREE_ONLY] = value }
+
+    suspend fun setCloudCustomBaseUrl(value: String) = edit { it[Keys.CLOUD_CUSTOM_URL] = value.trim() }
+
+    /**
+     * API keys, one per provider id. They live in the same app-private DataStore
+     * file but deliberately *outside* [AppSettings]: the settings snapshot flows
+     * into every view model, and a secret should only be read at the two call
+     * sites that need it (the Cloud screen and a cloud generation).
+     */
+    private fun cloudKeyKey(providerId: String) = stringPreferencesKey("cloud_key_$providerId")
+
+    val cloudApiKeys: Flow<Map<String, String>> = context.settingsDataStore.data
+        .catch { cause ->
+            if (cause is IOException) emit(androidx.datastore.preferences.core.emptyPreferences())
+            else throw cause
+        }
+        .map { prefs ->
+            prefs.asMap().entries.mapNotNull { (key, value) ->
+                val name = key.name
+                if (name.startsWith("cloud_key_") && value is String && value.isNotBlank()) {
+                    name.removePrefix("cloud_key_") to value
+                } else {
+                    null
+                }
+            }.toMap()
+        }
+
+    suspend fun setCloudApiKey(providerId: String, apiKey: String) = edit { prefs ->
+        val trimmed = apiKey.trim()
+        if (trimmed.isBlank()) prefs.remove(cloudKeyKey(providerId))
+        else prefs[cloudKeyKey(providerId)] = trimmed
+    }
 
     suspend fun resetToDefaults() = edit { it.clear() }
 

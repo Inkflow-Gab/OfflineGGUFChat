@@ -44,6 +44,11 @@ class AppContainer(private val context: Context) {
 
     val engine: NativeLlamaEngine by lazy { NativeLlamaEngine() }
 
+    /** Opt-in OpenAI-compatible client. Idle (no sockets) unless cloud is on. */
+    val cloudEngine: com.offlinegguf.chat.data.cloud.CloudChatEngine by lazy {
+        com.offlinegguf.chat.data.cloud.CloudChatEngine()
+    }
+
     /** Probed once. RAM, cores and storage do not change during a session. */
     val deviceProfile: DeviceProfile by lazy {
         DeviceProbe.profile(context, engine.isAvailable)

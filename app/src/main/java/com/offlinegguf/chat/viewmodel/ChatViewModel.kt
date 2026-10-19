@@ -15,15 +15,16 @@ import com.offlinegguf.chat.data.local.Roles
 import com.offlinegguf.chat.data.local.SkillEntity
 import com.offlinegguf.chat.data.repository.toSpec
 import com.offlinegguf.chat.data.settings.AppSettings
+import com.offlinegguf.chat.data.settings.ChatMode
 import com.offlinegguf.chat.domain.device.DeviceProfile
 import com.offlinegguf.chat.domain.fit.ModelFit
-import com.offlinegguf.chat.domain.skills.BuiltinSkills
 import com.offlinegguf.chat.inference.ChatTurn
 import com.offlinegguf.chat.inference.EngineEvent
 import com.offlinegguf.chat.inference.GenerationOutcome
 import com.offlinegguf.chat.inference.GenerationStats
 import com.offlinegguf.chat.inference.LoadRequest
 import com.offlinegguf.chat.inference.PromptFormatter
+import com.offlinegguf.chat.inference.PromptWindow
 import com.offlinegguf.chat.inference.SamplingParams
 import com.offlinegguf.chat.inference.StreamCoalescer
 import com.offlinegguf.chat.inference.TemplateStyle
@@ -54,7 +55,11 @@ data class ChatUiState(
     val streamingMessageId: Long = -1L,
     val streamingText: String = "",
     val streamingThinking: String = "",
+    /** Last answer that hit its per-pass token cap and can be continued. */
+    val continuableMessageId: Long? = null,
     val model: LocalModelEntity? = null,
+    /** When set, generation goes to this cloud model instead of the local engine. */
+    val cloudTarget: com.offlinegguf.chat.data.cloud.CloudTarget? = null,
     val engineAvailable: Boolean = false,
     val engineNotice: String? = null,
     val engineVersion: String = "",
@@ -74,7 +79,11 @@ data class ChatUiState(
     val editingMessageId: Long? = null,
 ) {
     /** Shown instead of the transcript when there is nothing to talk to yet. */
-    val showEngineOnboarding: Boolean get() = !engineAvailable || model == null
+    val showEngineOnboarding: Boolean
+        get() = cloudTarget == null && (!engineAvailable || model == null)
+
+    /** True when a send can actually run somewhere: local engine or cloud. */
+    val canGenerate: Boolean get() = cloudTarget != null || (engineAvailable && model != null)
 
     val title: String get() = conversation?.title?.takeIf { it.isNotBlank() } ?: "New chat"
 }
@@ -133,7 +142,12 @@ class ChatViewModel(
         }
         viewModelScope.launch {
             val settings = container.settings.settings.first()
-            _state.update { it.copy(settings = settings) }
+            _state.update { it.copy(settings = settings, cloudTarget = settings.cloudTarget()) }
+            viewModelScope.launch {
+                container.settings.settings.collect { latest ->
+                    _state.update { it.copy(settings = latest, cloudTarget = latest.cloudTarget()) }
+                }
+            }
 
             val id = requestedConversationId
                 ?: settings.lastConversationId.takeIf { last -> last > 0 && chat.conversation(last) != null }
@@ -229,7 +243,7 @@ class ChatViewModel(
     private fun bindConversation(conversationId: Long) {
         conversationJob?.cancel()
         messagesJob?.cancel()
-        _state.update { it.copy(conversationId = conversationId, skill = null) }
+        _state.update { it.copy(conversationId = conversationId, skill = null, continuableMessageId = null) }
 
         messagesJob = viewModelScope.launch {
             chat.observeMessages(conversationId).collect { rows ->
@@ -263,8 +277,10 @@ class ChatViewModel(
 
     fun consumeNotice() = _state.update { it.copy(notice = null) }
 
-    /** For failures the UI hits directly, such as an export nothing can receive. */
+    /** For failures or successes the UI hits directly, such as code-file export. */
     fun reportError(message: String) = _state.update { it.copy(error = message) }
+
+    fun reportNotice(message: String) = _state.update { it.copy(notice = message) }
 
     fun dismissError() = _state.update { it.copy(error = null) }
 
@@ -281,13 +297,13 @@ class ChatViewModel(
     }
 
     private fun systemPromptFor(skill: SkillEntity?): String {
-        val base = _state.value.settings.systemPrompt.trim()
-        val extra = skill?.systemPrompt?.trim().orEmpty()
-        return when {
-            extra.isEmpty() -> base
-            base.isEmpty() -> extra
-            else -> "$base\n\n$extra"
-        }
+        val settings = _state.value.settings
+        val parts = listOf(
+            settings.systemPrompt.trim(),
+            settings.chatMode.instruction,
+            skill?.systemPrompt?.trim().orEmpty(),
+        ).filter { it.isNotBlank() }
+        return parts.joinToString("\n\n")
     }
 
     // ---------------------------------------------------------------- model
@@ -303,7 +319,20 @@ class ChatViewModel(
             }
 
             val probe = models.probe(file)
-            val assessment = ModelFit.assess(container.deviceProfile, probe.toSpec())
+            val profile = container.deviceProfile
+            // Re-assess saved per-model settings rather than blindly passing an
+            // old context/batch value to native code. Phone capability can be
+            // lower now (or the old settings may never have fit).
+            val assessment = ModelFit.assess(
+                profile = profile,
+                spec = probe.toSpec(),
+                request = ModelFit.Request(
+                    context = model.nCtx.takeIf { it > 0 },
+                    threads = model.threads.takeIf { it > 0 }?.coerceAtMost(profile.suggestedThreads),
+                    batch = model.batch.takeIf { it > 0 }?.coerceAtMost(profile.suggestedBatch),
+                    storageFreeBytes = profile.freeStorageBytes,
+                ),
+            )
             _state.update {
                 it.copy(
                     fit = assessment,
@@ -331,11 +360,13 @@ class ChatViewModel(
             val result = engine.load(
                 LoadRequest(
                     path = model.path,
-                    context = if (model.nCtx > 0) model.nCtx else tuned.context,
-                    threads = if (model.threads > 0) model.threads else tuned.threads,
-                    batch = if (model.batch > 0) model.batch else tuned.batch,
-                    gpuLayers = model.gpuLayers,
-                    useMmap = model.useMmap,
+                    context = tuned.context,
+                    threads = tuned.threads,
+                    batch = tuned.batch,
+                    // CPU-only in this build; never let a stale GPU setting
+                    // request layers that the native backend cannot provide.
+                    gpuLayers = 0,
+                    useMmap = true,
                 ),
             )
 
@@ -354,9 +385,12 @@ class ChatViewModel(
                             architecture = probe.architecture,
                             chatTemplate = report.chatTemplate.ifBlank { probe.chatTemplate },
                         ),
-                        notice = if (announce) {
+                        notice = if (!announce) null else if ((model.nCtx.takeIf { it > 0 } ?: profile.suggestedContext) > tuned.context) {
+                            "Loaded ${model.displayName} with context reduced to " +
+                                "${Formats.contextTokens(tuned.context.toLong())} to protect this phone's memory."
+                        } else {
                             "Loaded ${model.displayName} in ${Formats.fixed(result.elapsedMs / 1000.0, 1)}s"
-                        } else null,
+                        },
                     )
                 }
             } else {
@@ -402,14 +436,19 @@ class ChatViewModel(
             return
         }
         when {
-            !current.engineAvailable -> _state.update {
-                it.copy(error = it.engineNotice ?: "This build has no inference engine")
-            }
-            current.model == null -> _state.update { it.copy(error = "Pick a model first") }
-            else -> {
+            current.canGenerate -> {
                 val attachments = current.attachments
                 _state.update { it.copy(input = "", attachments = emptyList()) }
                 startGeneration(userText = text, attachments = attachments)
+            }
+            !current.engineAvailable -> _state.update {
+                it.copy(
+                    error = (it.engineNotice ?: "This build has no inference engine") +
+                        " — or pick a free cloud model in the Cloud tab.",
+                )
+            }
+            else -> _state.update {
+                it.copy(error = "Pick a model first — a local GGUF, or a free one in the Cloud tab.")
             }
         }
     }
@@ -422,7 +461,7 @@ class ChatViewModel(
         _state.update { it.copy(input = "", editingMessageId = null) }
         viewModelScope.launch {
             val removed = chat.deleteFrom(messageId)
-            if (removed > 0) {
+            if (removed > 0 && _state.value.cloudTarget == null) {
                 engine.rewind((lastPromptTokens - lastAnswerTokens).coerceAtLeast(0))
                 _state.update { it.copy(contextUsed = engine.contextUsed()) }
             }
@@ -434,8 +473,45 @@ class ChatViewModel(
         if (_state.value.generating) return
         viewModelScope.launch {
             val window = chat.prepareRegenerate(_state.value.conversationId)
-            engine.rewind((lastPromptTokens - lastAnswerTokens).coerceAtLeast(0))
+            if (_state.value.cloudTarget == null) {
+                engine.rewind((lastPromptTokens - lastAnswerTokens).coerceAtLeast(0))
+            }
             startGeneration(userText = null, attachments = emptyList(), transcript = window.transcript)
+        }
+    }
+
+    /**
+     * Extend a capped answer in-place. Each pass is bounded by the model/context,
+     * but the user can keep going without a hard app-level total-token ceiling.
+     * The continuation instruction is added to the inference prompt only; it is
+     * not inserted as a fake user message in the visible transcript.
+     */
+    fun continueMessage(messageId: Long) {
+        val current = _state.value
+        if (current.generating || current.continuableMessageId != messageId || !current.canGenerate) return
+        viewModelScope.launch {
+            val previous = chat.message(messageId) ?: return@launch
+            if (previous.role != Roles.ASSISTANT || previous.content.isBlank()) return@launch
+            val history = chat.messages(current.conversationId)
+            if (history.lastOrNull()?.id != messageId) return@launch
+            val promptOnlyContinuation = MessageEntity(
+                conversationId = current.conversationId,
+                role = Roles.USER,
+                content = "Continue the answer directly from where it stopped. Do not repeat any text already given. Complete the remaining explanation or code.",
+            )
+            startGeneration(
+                userText = null,
+                attachments = emptyList(),
+                transcript = history + promptOnlyContinuation,
+                existingMessageId = messageId,
+                previousText = previous.content,
+                previousThinking = previous.thinkingText.orEmpty(),
+                previousStats = GenerationStats(
+                    tokensGenerated = previous.tokensGenerated,
+                    promptTokens = previous.promptTokens,
+                    microseconds = previous.microseconds,
+                ),
+            )
         }
     }
 
@@ -443,12 +519,21 @@ class ChatViewModel(
         userText: String?,
         attachments: List<Attachment>,
         transcript: List<MessageEntity>? = null,
+        existingMessageId: Long? = null,
+        previousText: String = "",
+        previousThinking: String = "",
+        previousStats: GenerationStats? = null,
     ) {
         generationJob?.cancel()
         generationJob = viewModelScope.launch {
             val snapshot = _state.value
             val conversationId = snapshot.conversationId
-            val model = snapshot.model ?: return@launch
+            // Exactly one of these drives the generation: a picked cloud model
+            // wins over a resident GGUF (the top bar says which, and the Cloud
+            // tab is where the choice is undone).
+            val cloud = snapshot.cloudTarget
+            val model = snapshot.model
+            if (cloud == null && model == null) return@launch
             val skill = snapshot.skill
 
             val attachmentText = attachments
@@ -456,7 +541,14 @@ class ChatViewModel(
                 .ifBlank { null }
 
             if (userText != null) {
-                val composed = BuiltinSkills.expand(skill?.userTemplate, userText, attachmentText.orEmpty())
+                // Compose via the shared formatter so attachments are included for
+                // ordinary messages and skill templates alike (previously a null
+                // template silently discarded attached file contents).
+                val composed = PromptFormatter.composeUserMessage(
+                    input = userText,
+                    attachmentText = attachmentText,
+                    template = skill?.userTemplate,
+                )
                 chat.appendUser(conversationId, composed, attachments.map { it.name })
             }
 
@@ -465,37 +557,67 @@ class ChatViewModel(
                 .filter { (it.role == Roles.USER || it.role == Roles.ASSISTANT) && it.content.isNotBlank() }
                 .map { ChatTurn(it.role, it.content) }
 
+            val settings = snapshot.settings
+            val sampling = if (cloud != null) {
+                samplingForCloud(skill, settings)
+            } else {
+                samplingFor(model!!, skill, settings)
+            }
+            val system = systemPromptFor(skill)
+            val promptContext = when {
+                // Cloud models advertise huge contexts; cap what we re-send so a
+                // long chat cannot balloon the request (and the bill) forever.
+                cloud != null -> cloud.contextLength.takeIf { it > 0 }?.coerceAtMost(65_536) ?: 32_768
+                else -> snapshot.contextSize.takeIf { it > 0 }
+                    ?: model?.nCtx?.takeIf { it > 0 }
+                    ?: container.deviceProfile.suggestedContext
+            }
+            val window = PromptWindow.fit(system, turns, promptContext, sampling.maxTokens)
             val prompt = PromptFormatter.render(
                 style = snapshot.templateStyle,
-                system = systemPromptFor(skill),
-                turns = turns,
+                system = system,
+                turns = window.turns,
             )
+            val windowNotice = when {
+                window.droppedTurns > 0 && window.clippedLatestTurn ->
+                    "Using recent turns; older chat and part of the newest turn are omitted to fit this model's context. The full transcript is saved."
+                window.droppedTurns > 0 ->
+                    "Using the ${window.turns.size} most recent turns to keep prompt evaluation fast. The full transcript is saved."
+                window.clippedLatestTurn ->
+                    "Part of the newest turn was omitted to fit this model's context. The full transcript is saved."
+                else -> null
+            }
 
-            val assistantId = chat.startAssistant(
+            val assistantId = existingMessageId ?: chat.startAssistant(
                 conversationId = conversationId,
-                modelName = model.displayName,
+                modelName = cloud?.label ?: model?.displayName ?: "model",
                 skillId = skill?.slug,
             )
+            if (existingMessageId != null) chat.resumeAssistant(existingMessageId)
 
-            val settings = snapshot.settings
+            // Render short batches about 10 times a second: visibly progressive
+            // instead of arriving in large 250 ms jumps, while still avoiding a
+            // recomposition and Room write for every tiny token fragment.
             val coalescer = StreamCoalescer(
-                flushMillis = if (settings.reduceMotion) 120L else 256L,
-                flushChars = 48,
+                flushMillis = if (settings.reduceMotion) 60L else 96L,
+                flushChars = 16,
             )
             val thinkingCoalescer = StreamCoalescer(
-                flushMillis = if (settings.reduceMotion) 120L else 256L,
-                flushChars = 48,
+                flushMillis = if (settings.reduceMotion) 60L else 96L,
+                flushChars = 16,
             )
             val thinking = ThinkingParser()
-            val answer = StringBuilder()
-            val reasoning = StringBuilder()
+            val answer = StringBuilder(previousText)
+            val reasoning = StringBuilder(previousThinking)
 
             _state.update {
                 it.copy(
                     generating = true,
                     streamingMessageId = assistantId,
-                    streamingText = "",
-                    streamingThinking = "",
+                    streamingText = previousText,
+                    streamingThinking = previousThinking,
+                    continuableMessageId = null,
+                    notice = windowNotice,
                     error = null,
                 )
             }
@@ -503,8 +625,26 @@ class ChatViewModel(
             var stats = GenerationStats()
             var outcome = GenerationOutcome.COMPLETED
             var failure: String? = null
+            var lastPersistNanos = System.nanoTime()
 
-            engine.stream(prompt, samplingFor(model, skill, settings)).collect { event ->
+            // Both engines speak EngineEvent, so everything below — coalescing,
+            // thinking split, persistence, stats — is shared verbatim.
+            val events: kotlinx.coroutines.flow.Flow<EngineEvent> = if (cloud != null) {
+                val apiKey = container.settings.cloudApiKeys.first()[cloud.providerId].orEmpty()
+                container.cloudEngine.stream(
+                    provider = cloud.provider,
+                    customBaseUrl = settings.cloudCustomBaseUrl,
+                    apiKey = apiKey,
+                    modelId = cloud.modelId,
+                    system = system,
+                    turns = window.turns,
+                    sampling = sampling,
+                )
+            } else {
+                engine.stream(prompt, sampling)
+            }
+
+            events.collect { event ->
                 when (event) {
                     is EngineEvent.Token -> {
                         val out = thinking.offer(event.text)
@@ -520,9 +660,15 @@ class ChatViewModel(
                         }
                         if (out.answer.isNotEmpty()) {
                             answer.append(out.answer)
-                            // Persist and repaint at the coalescer's cadence, not per token.
+                            // Repaint at the smooth UI cadence, but persist separately
+                            // below. Re-querying an entire long transcript on every
+                            // tiny stream update is costly on low-end phones.
                             if (coalescer.offer(out.answer) != null) {
-                                publishStream(assistantId, answer.toString(), reasoning.toString())
+                                _state.update {
+                                    if (it.streamingMessageId == assistantId) {
+                                        it.copy(streamingText = answer.toString())
+                                    } else it
+                                }
                             }
                         }
                     }
@@ -536,6 +682,10 @@ class ChatViewModel(
                         failure = event.message
                         outcome = GenerationOutcome.FAILED
                     }
+                }
+                if (event is EngineEvent.Token && System.nanoTime() - lastPersistNanos >= 500_000_000L) {
+                    publishStream(assistantId, answer.toString(), reasoning.toString())
+                    lastPersistNanos = System.nanoTime()
                 }
             }
 
@@ -551,15 +701,33 @@ class ChatViewModel(
             // `failure` is mutated from inside the collector below, so the compiler
             // will not smart-cast it; copy it into a stable local first.
             val failureText = failure
+            val hitOutputCap = failureText == null && outcome == GenerationOutcome.COMPLETED &&
+                !stats.truncated && sampling.grammar == null && stats.tokensGenerated >= sampling.maxTokens
+            val storedStats = previousStats?.let { previous ->
+                stats.copy(
+                    tokensGenerated = previous.tokensGenerated + stats.tokensGenerated,
+                    microseconds = previous.microseconds + stats.microseconds,
+                    truncated = previous.truncated || stats.truncated,
+                    cancelled = previous.cancelled || stats.cancelled,
+                )
+            } ?: stats
             if (failureText != null) {
-                chat.failMessage(assistantId, failureText)
+                if (existingMessageId != null) {
+                    // Preserve the already-generated answer and any continuation
+                    // text if a later extension pass fails.
+                    chat.finishMessage(assistantId, GenerationOutcome.COMPLETED, storedStats)
+                } else {
+                    chat.failMessage(assistantId, failureText)
+                }
                 _state.update { it.copy(error = failureText) }
             } else {
-                chat.finishMessage(assistantId, outcome, stats)
+                chat.finishMessage(assistantId, outcome, storedStats)
             }
 
-            lastPromptTokens = stats.promptTokens
-            lastAnswerTokens = stats.tokensGenerated
+            // A continuation changes the effective prompt tail, so future edits
+            // safely rebuild the KV cache instead of rewinding to stale token counts.
+            lastPromptTokens = if (existingMessageId != null) 0 else stats.promptTokens
+            lastAnswerTokens = if (existingMessageId != null) 0 else stats.tokensGenerated
 
             _state.update {
                 it.copy(
@@ -567,15 +735,17 @@ class ChatViewModel(
                     streamingMessageId = -1L,
                     streamingText = "",
                     streamingThinking = "",
+                    continuableMessageId = if (hitOutputCap) assistantId else null,
                     lastSpeed = stats.tokensPerSecond,
                     contextUsed = stats.contextUsed.takeIf { used -> used > 0 }
                         ?: it.contextUsed,
                     notice = when {
-                        failure != null -> null
+                        failureText != null -> null
                         stats.truncated || outcome == GenerationOutcome.TRUNCATED ->
-                            "The transcript outgrew the context; older turns were dropped."
+                            "The transcript reached its context limit; older turns were dropped."
                         outcome == GenerationOutcome.CANCELLED -> "Stopped after ${stats.tokensGenerated} tokens."
-                        else -> null
+                        hitOutputCap -> "Response chunk complete. Tap the play icon under the answer to continue; the model context still sets the limit."
+                        else -> windowNotice
                     },
                 )
             }
@@ -606,8 +776,45 @@ class ChatViewModel(
             seed = model.seed,
             grammar = skill?.grammar?.takeIf { it.isNotBlank() },
         )
-        // Grammar-constrained decoding needs greedy sampling or it fights itself.
-        return if (params.grammar != null) params.forGrammar() else params
+        // Modes affect actual decoding as well as the system instruction. Skills
+        // remain authoritative for their output shape; grammar gets the final say.
+        val tuned = if (skill != null) params else when (settings.chatMode) {
+            ChatMode.CAREFUL, ChatMode.CODING -> params.copy(temperature = minOf(params.temperature, 0.3f))
+            ChatMode.FAST -> params.copy(
+                maxTokens = minOf(params.maxTokens, 320),
+                temperature = minOf(params.temperature, 0.6f),
+            )
+            ChatMode.BALANCED, ChatMode.CHAT -> params
+        }
+        return if (tuned.grammar != null) tuned.forGrammar() else tuned
+    }
+
+    /**
+     * Cloud sampling: the global defaults with skill overrides and the same
+     * chat-mode tuning as local generation. Per-GGUF knobs (KV type, GBNF
+     * grammar, repeat penalty) do not exist in the OpenAI dialect and are
+     * simply not sent.
+     */
+    private fun samplingForCloud(
+        skill: SkillEntity?,
+        settings: AppSettings,
+    ): SamplingParams {
+        val params = SamplingParams(
+            maxTokens = skill?.maxTokens?.takeIf { it > 0 } ?: settings.maxTokens,
+            temperature = skill?.temperature ?: settings.temperature,
+            topP = skill?.topP ?: settings.topP,
+            topK = settings.topK,
+            minP = settings.minP,
+            repeatPenalty = settings.repeatPenalty,
+        )
+        return if (skill != null) params else when (settings.chatMode) {
+            ChatMode.CAREFUL, ChatMode.CODING -> params.copy(temperature = minOf(params.temperature, 0.3f))
+            ChatMode.FAST -> params.copy(
+                maxTokens = minOf(params.maxTokens, 320),
+                temperature = minOf(params.temperature, 0.6f),
+            )
+            ChatMode.BALANCED, ChatMode.CHAT -> params
+        }
     }
 
     fun stop() {
@@ -616,8 +823,26 @@ class ChatViewModel(
         val streamingId = _state.value.streamingMessageId
         if (streamingId > 0) {
             viewModelScope.launch {
-                chat.finishMessage(streamingId, GenerationOutcome.CANCELLED, GenerationStats())
-                _state.update { it.copy(generating = false, streamingMessageId = -1L) }
+                val saved = chat.message(streamingId)
+                chat.finishMessage(
+                    streamingId,
+                    GenerationOutcome.CANCELLED,
+                    GenerationStats(
+                        tokensGenerated = saved?.tokensGenerated ?: 0,
+                        promptTokens = saved?.promptTokens ?: 0,
+                        microseconds = saved?.microseconds ?: 0L,
+                        cancelled = true,
+                    ),
+                )
+                _state.update {
+                    it.copy(
+                        generating = false,
+                        streamingMessageId = -1L,
+                        streamingText = "",
+                        streamingThinking = "",
+                        continuableMessageId = null,
+                    )
+                }
             }
         } else {
             _state.update { it.copy(generating = false) }

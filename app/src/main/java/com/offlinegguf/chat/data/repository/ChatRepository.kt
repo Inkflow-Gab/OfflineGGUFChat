@@ -181,6 +181,11 @@ class ChatRepository(private val db: AppDatabase) {
         )
     }
 
+    /** Resume a completed assistant row for another bounded generation pass. */
+    suspend fun resumeAssistant(messageId: Long) = withContext(Dispatchers.IO) {
+        messages.setStatus(messageId, MessageStatus.STREAMING)
+    }
+
     /**
      * Writes the streamed text so far. Called at the coalescer's cadence (a few
      * times a second), not per token.

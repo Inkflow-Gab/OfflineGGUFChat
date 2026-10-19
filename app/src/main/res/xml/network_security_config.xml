@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext is permitted for exactly one reason: the optional *custom* cloud
+  endpoint is usually a plain-HTTP server on the user's own LAN (llama.cpp,
+  LM Studio, Ollama on a PC). The three built-in providers are HTTPS-only and
+  the app never contacts anything the user did not configure.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

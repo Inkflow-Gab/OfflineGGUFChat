@@ -91,6 +91,25 @@ object ModelAdvisor {
     fun best(profile: DeviceProfile, catalog: List<CatalogModel>, prefs: Prefs = Prefs()): Recommendation? =
         recommend(profile, catalog, prefs, limit = 1).firstOrNull()
 
+    /**
+     * The first-run answer to "just tell me what to get": the highest-ranked model
+     * that downloads quickly (≤ 1.5 GB) *and* runs comfortably on this phone.
+     * Speed-biased on purpose — a first chat inside a minute beats a perfect one
+     * after a 5 GB download. Null when nothing small fits, which on any phone the
+     * catalogue covers should not happen.
+     */
+    fun starterPick(profile: DeviceProfile, catalog: List<CatalogModel>): Recommendation? {
+        val small = catalog.filter { it.approxSizeBytes <= 1_610_612_736L && !it.requiresAdult }
+        val ranked = recommend(
+            profile = profile,
+            catalog = small,
+            prefs = Prefs(preferSpeed = true),
+            limit = small.size.coerceAtLeast(1),
+        )
+        return ranked.firstOrNull { it.assessment.verdict == ModelFit.Verdict.COMFORTABLE }
+            ?: ranked.firstOrNull { it.assessment.usable }
+    }
+
     /** The single line the onboarding card shows: "Best fit for this phone: …". */
     fun headline(profile: DeviceProfile, catalog: List<CatalogModel>, prefs: Prefs = Prefs()): String {
         val top = best(profile, catalog, prefs) ?: return "No catalogue entries available."
@@ -148,7 +167,12 @@ object ModelAdvisor {
         }
         var total = wQuality * quality + wSpeed * speed + wFit * headroom + wStyle * styleMatch
 
-        // A phone with 3 GB of RAM should not be told to fetch 8 GB "because it
+        // A small recency nudge: between two otherwise-equal builds the 2025 one
+        // wins, because small-model quality moves fast. Quality scores still
+        // dominate — this never lifts a worse model over a clearly better one.
+        if (model.released >= "2025") total *= 1.04
+
+        // A phone with 3 GB of RAM should not be told to fetch 8 GB "because it"
         // is the best model": capability is only worth scoring once it fits.
         if (assessment.verdict == ModelFit.Verdict.WILL_NOT_FIT) total *= 0.12
         if (profile.freeStorageBytes in 1 until model.approxSizeBytes * 2) total *= 0.5
@@ -191,6 +215,12 @@ object ModelAdvisor {
         if (prefs.style == ModelStyle.CODE && model.hasStyle(ModelStyle.CODE.id)) {
             out += "Code-tuned — better at patches and diffs than a general model of the same size."
         }
+        if (model.reasoning) {
+            out += "Thinking model: raise Max tokens in Settings so the answer is not spent on the reasoning trace."
+        }
+        if (prefs.style == ModelStyle.ROLEPLAY && model.hasStyle(ModelStyle.ROLEPLAY.id)) {
+            out += "Tuned to stay in character and write prose — pair it with a persona skill for scenes and stories."
+        }
         if (model.license.isNotBlank() && !model.license.startsWith("Apache")) {
             out += "Licence: ${model.license}."
         }
@@ -212,10 +242,12 @@ object ModelAdvisor {
         }
         if (assessment.tokensPerSecond >= 8.0) out += "Fast"
         if (model.uncensored) out += "Refusal-free"
+        if (model.requiresAdult) out += "18+"
+        if (model.reasoning) out += "Thinking"
         if (model.hasStyle(ModelStyle.CODE.id)) out += "Code"
         if (model.approxSizeBytes <= 1L * 1024 * 1024 * 1024) out += "Under 1 GB"
         if (profile.freeStorageBytes in 1 until model.approxSizeBytes * 2) out += "Low storage"
-        return out.distinct().take(4)
+        return out.distinct().take(5)
     }
 
     /**

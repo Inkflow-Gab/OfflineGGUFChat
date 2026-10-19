@@ -58,8 +58,9 @@ import com.offlinegguf.chat.viewmodel.SkillsViewModel
  * Prompt presets.
  *
  * The built-ins cover the common shapes — a patch request that produces a unified
- * diff, strict JSON, bullet summaries, verbatim quotes. A skill can also carry a
- * GBNF grammar, which constrains decoding so the output cannot leave the shape.
+ * diff, strict JSON, bullet summaries, verbatim quotes. Custom skills can also be
+ * used as reusable fictional personas or role presets. A skill can carry a GBNF
+ * grammar, which constrains decoding so the output cannot leave the shape.
  */
 @Composable
 fun SkillsScreen(
@@ -101,7 +102,7 @@ fun SkillsScreen(
                 EmptyState(
                     icon = R.drawable.ic_sparkle,
                     title = "No skills yet",
-                    body = "A skill is a system prompt plus optional sampling and grammar rules. " +
+                    body = "Create reusable task presets or fictional personas with their own voice and rules. " +
                         "Restore the built-ins, or write your own.",
                     actionLabel = "Restore built-ins",
                     onAction = { viewModel.resetBuiltins() },
@@ -319,7 +320,7 @@ private fun SkillEditor(
                 onValue = onSystemPrompt,
                 colors = fieldColors,
                 minLines = 4,
-                hint = "Appended after your default system prompt.",
+                hint = "Appended after your default prompt. Define a reusable task role or fictional persona and its speaking style.",
             )
             Field(
                 label = "User template (optional)",

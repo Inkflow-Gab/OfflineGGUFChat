@@ -54,6 +54,7 @@ fun MarkdownText(
     previousCode: Map<Int, String> = emptyMap(),
     showLineNumbers: Boolean = true,
     textColor: Color? = null,
+    onSaveCode: (content: String, fileName: String) -> Unit = { _, _ -> },
 ) {
     val blocks = remember(text) { MarkdownBlocks.parse(text) }
     val spacing = OfflineGgufTheme.spacing
@@ -93,9 +94,11 @@ fun MarkdownText(
                     CodeBlock(
                         content = block.content,
                         language = block.language,
+                        filename = block.filename,
                         previous = previousCode[codeIndex],
                         showLineNumbers = showLineNumbers,
                         terminated = block.terminated,
+                        onSaveCode = onSaveCode,
                     )
                 }
 

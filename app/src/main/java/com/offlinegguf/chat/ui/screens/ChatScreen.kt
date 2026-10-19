@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -54,9 +56,11 @@ import com.offlinegguf.chat.AppContainer
 import com.offlinegguf.chat.R
 import com.offlinegguf.chat.data.export.launchShare
 import com.offlinegguf.chat.data.settings.AppSettings
+import com.offlinegguf.chat.data.settings.ChatMode
 import com.offlinegguf.chat.ui.components.ContextGauge
 import com.offlinegguf.chat.ui.components.EmptyState
 import com.offlinegguf.chat.ui.components.InkButton
+import com.offlinegguf.chat.ui.components.InkChip
 import com.offlinegguf.chat.ui.components.InkIconButton
 import com.offlinegguf.chat.ui.components.InkTopBar
 import com.offlinegguf.chat.ui.components.InputBar
@@ -65,7 +69,9 @@ import com.offlinegguf.chat.ui.components.SectionTitle
 import com.offlinegguf.chat.ui.theme.OfflineGgufTheme
 import com.offlinegguf.chat.util.Formats
 import com.offlinegguf.chat.viewmodel.ChatViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The transcript.
@@ -83,6 +89,7 @@ fun ChatScreen(
     onOpenHistory: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenSkills: () -> Unit,
+    onOpenCloud: () -> Unit,
 ) {
     val viewModel: ChatViewModel = viewModel(
         key = "chat-${conversationId ?: 0}",
@@ -99,10 +106,29 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var menuOpen by remember { mutableStateOf(false) }
+    var modeMenuOpen by remember { mutableStateOf(false) }
     var showGauge by remember { mutableStateOf(false) }
+    var pendingCodeSave by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { viewModel.attach(it) }
+    }
+    val saveCodeFile = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        val pending = pendingCodeSave
+        pendingCodeSave = null
+        if (uri != null && pending != null) {
+            scope.launch {
+                val saved = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val output = context.contentResolver.openOutputStream(uri)
+                            ?: error("Could not open the destination file")
+                        output.use { it.write(pending.first.toByteArray(Charsets.UTF_8)) }
+                    }
+                }
+                saved.onSuccess { viewModel.reportNotice("Saved ${pending.second}") }
+                    .onFailure { viewModel.reportError(it.message ?: "Could not save the code file") }
+            }
+        }
     }
 
     // Follow the answer while it streams, unless the user scrolled back to read.
@@ -132,6 +158,7 @@ fun ChatScreen(
         InkTopBar(
             title = state.title,
             subtitle = when {
+                state.cloudTarget != null -> "☁ ${state.cloudTarget!!.label}"
                 state.loadingModel -> "Loading model…"
                 state.model != null -> {
                     val model = state.model!!
@@ -163,6 +190,38 @@ fun ChatScreen(
                         )
                     }
                 }
+                Box {
+                    InkIconButton(
+                        icon = R.drawable.ic_brain,
+                        description = "Chat mode: ${settings.chatMode.label}. Open chat modes and thinking options",
+                        onClick = { modeMenuOpen = true },
+                    )
+                    DropdownMenu(expanded = modeMenuOpen, onDismissRequest = { modeMenuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Chat modes") },
+                            enabled = false,
+                            leadingIcon = { Icon(painterResource(R.drawable.ic_sparkle), null, Modifier.size(16.dp)) },
+                            onClick = {},
+                        )
+                        ChatMode.values().forEach { mode ->
+                            DropdownMenuItem(
+                                text = { Text(if (settings.chatMode == mode) "✓ ${mode.label}" else mode.label) },
+                                onClick = {
+                                    modeMenuOpen = false
+                                    scope.launch { container.settings.setChatMode(mode) }
+                                },
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text(if (settings.showThinking) "Hide model reasoning" else "Show model reasoning") },
+                            leadingIcon = { Icon(painterResource(R.drawable.ic_brain), null, Modifier.size(16.dp)) },
+                            onClick = {
+                                modeMenuOpen = false
+                                scope.launch { container.settings.setShowThinking(!settings.showThinking) }
+                            },
+                        )
+                    }
+                }
                 InkIconButton(
                     icon = R.drawable.ic_plus,
                     description = "New chat",
@@ -182,12 +241,44 @@ fun ChatScreen(
                     )
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
-                            text = { Text("Models") },
+                            text = {
+                                Text(
+                                    "Choose a model · ${container.catalog.entries.size} options " +
+                                        "(${container.catalog.uncensored().size} refusal-free)",
+                                )
+                            },
                             leadingIcon = {
                                 Icon(painterResource(R.drawable.ic_cube), null, Modifier.size(16.dp))
                             },
                             onClick = { menuOpen = false; onOpenModels() },
                         )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (state.cloudTarget != null) {
+                                        "Cloud · ${state.cloudTarget!!.displayName} (change)"
+                                    } else {
+                                        "Cloud models · many free"
+                                    },
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(painterResource(R.drawable.ic_cloud), null, Modifier.size(16.dp))
+                            },
+                            onClick = { menuOpen = false; onOpenCloud() },
+                        )
+                        if (state.cloudTarget != null) {
+                            DropdownMenuItem(
+                                text = { Text("Use on-device model instead") },
+                                leadingIcon = {
+                                    Icon(painterResource(R.drawable.ic_phone), null, Modifier.size(16.dp))
+                                },
+                                onClick = {
+                                    menuOpen = false
+                                    scope.launch { container.settings.setCloudTarget(null) }
+                                },
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text("Skills") },
                             leadingIcon = {
@@ -253,7 +344,7 @@ fun ChatScreen(
         )
 
         AnimatedVisibility(
-            visible = showGauge && state.model != null,
+            visible = showGauge && state.model != null && state.cloudTarget == null,
             enter = expandVertically(tween(motion.standard)) + fadeIn(tween(motion.standard)),
             exit = shrinkVertically(tween(motion.fast)) + fadeOut(tween(motion.fast)),
         ) {
@@ -284,18 +375,46 @@ fun ChatScreen(
                             loadingModel = state.loadingModel,
                             onOpenModels = onOpenModels,
                             onOpenSettings = onOpenSettings,
+                            onOpenCloud = onOpenCloud,
                         )
                     }
                 }
 
                 if (!state.showEngineOnboarding && state.messages.isEmpty()) {
                     item(key = "empty") {
-                        EmptyState(
-                            icon = R.drawable.ic_chat,
-                            title = "Nothing here yet",
-                            body = "Everything runs on this phone. No account, no upload, no network — " +
-                                "and if you turn the radio off it works exactly the same.",
-                        )
+                        Column {
+                            EmptyState(
+                                icon = R.drawable.ic_chat,
+                                title = when (settings.chatMode) {
+                                    ChatMode.FAST -> "Quick answers, right here"
+                                    ChatMode.CHAT -> "Start a conversation"
+                                    ChatMode.CODING -> "What are we building?"
+                                    ChatMode.CAREFUL -> "Let’s work through it carefully"
+                                    ChatMode.BALANCED -> "A private chat, on your terms"
+                                },
+                                body = if (state.cloudTarget != null) {
+                                    "Talking to ${state.cloudTarget!!.label} over the network with your key. " +
+                                        "Choose a starter or write your own prompt."
+                                } else {
+                                    "Runs on this phone. No account, no upload, no network. " +
+                                        "Choose a starter or write your own prompt."
+                                },
+                            )
+                            Text(
+                                text = "QUICK START · ${settings.chatMode.label.uppercase()}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = colors.tertiary,
+                                modifier = Modifier.padding(start = spacing.md, bottom = spacing.xs),
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                            ) {
+                                quickStarters(settings.chatMode).forEach { starter ->
+                                    InkChip(text = starter, onClick = { viewModel.onInputChange(starter) })
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -326,6 +445,12 @@ fun ChatScreen(
                         onLike = { liked -> viewModel.toggleLike(message.id, liked) },
                         onFlag = { flagged -> viewModel.toggleFlag(message.id, flagged) },
                         onRegenerate = { viewModel.regenerate() },
+                        canContinue = state.continuableMessageId == message.id,
+                        onContinue = { viewModel.continueMessage(message.id) },
+                        onSaveCode = { code, fileName ->
+                            pendingCodeSave = code to fileName
+                            saveCodeFile.launch(fileName)
+                        },
                         onEdit = { viewModel.startEditing(message.id, message.content) },
                         onDeleteFrom = { viewModel.deleteFrom(message.id) },
                     )
@@ -403,6 +528,14 @@ fun ChatScreen(
     }
 }
 
+private fun quickStarters(mode: ChatMode): List<String> = when (mode) {
+    ChatMode.FAST -> listOf("Summarize this", "Explain in one line", "Give me the key point")
+    ChatMode.CHAT -> listOf("Help me brainstorm", "Tell me a short story", "Let’s explore an idea")
+    ChatMode.CODING -> listOf("Write a Python script", "Explain this error", "Review my code")
+    ChatMode.CAREFUL -> listOf("Check my reasoning", "Compare these options", "Explain step by step")
+    ChatMode.BALANCED -> listOf("Explain a topic simply", "Help me write", "Brainstorm ideas")
+}
+
 /** Inline banner; a snackbar would fight the composer for the bottom of the screen. */
 @Composable
 private fun NoticeBanner(
@@ -466,6 +599,7 @@ private fun EngineOnboarding(
     loadingModel: Boolean,
     onOpenModels: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenCloud: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val spacing = OfflineGgufTheme.spacing
@@ -483,9 +617,11 @@ private fun EngineOnboarding(
 
         Text(
             text = if (engineAvailable) {
-                "The engine is here. Load a GGUF file and the conversation stays on this device."
+                "The engine is here. Load a GGUF file and the conversation stays on this device — " +
+                    "or skip the download and use a free cloud model with your own key."
             } else {
-                engineNotice ?: "This APK was built without llama.cpp."
+                (engineNotice ?: "This APK was built without llama.cpp.") +
+                    " You can still chat: pick a free cloud model in the Cloud tab."
             },
             style = MaterialTheme.typography.bodyMedium,
             color = colors.onSurfaceVariant,
@@ -499,6 +635,12 @@ private fun EngineOnboarding(
                 onClick = onOpenModels,
                 enabled = !loadingModel,
                 icon = R.drawable.ic_cube,
+            )
+            InkButton(
+                label = "Free cloud model",
+                onClick = onOpenCloud,
+                filled = false,
+                icon = R.drawable.ic_cloud,
             )
             InkButton(
                 label = "Settings",

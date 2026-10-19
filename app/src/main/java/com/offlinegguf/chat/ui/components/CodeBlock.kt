@@ -37,6 +37,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.offlinegguf.chat.R
 import com.offlinegguf.chat.ui.theme.CodeGutterText
@@ -48,7 +49,7 @@ import com.offlinegguf.chat.util.UnifiedDiff
 import kotlinx.coroutines.delay
 
 /** Lines past this are collapsed behind "show all", so a 900-line dump cannot stall a scroll. */
-private const val MAX_VISIBLE_LINES = 80
+private const val MAX_VISIBLE_LINES = 50
 
 private sealed class CodeRow {
     data class Plain(val number: Int, val text: String) : CodeRow()
@@ -75,9 +76,11 @@ fun CodeBlock(
     content: String,
     modifier: Modifier = Modifier,
     language: String = "",
+    filename: String? = null,
     previous: String? = null,
     showLineNumbers: Boolean = true,
     terminated: Boolean = true,
+    onSaveCode: (content: String, fileName: String) -> Unit = { _, _ -> },
 ) {
     val palette = OfflineGgufTheme.diff
     val spacing = OfflineGgufTheme.spacing
@@ -131,9 +134,22 @@ fun CodeBlock(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = language.ifBlank { if (isDiffOutput) "diff" else "code" },
+                    text = filename ?: language.ifBlank { if (isDiffOutput) "diff" else "code" },
                     style = MaterialTheme.typography.labelSmall,
-                    color = colors.tertiary,
+                    color = colors.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (filename != null && language.isNotBlank()) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(language, style = MaterialTheme.typography.labelSmall, color = colors.tertiary)
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "$totalLines lines",
+                    style = CodeGutterText,
+                    color = colors.onSurfaceVariant,
                 )
                 if (summary != null) {
                     Spacer(Modifier.width(8.dp))
@@ -151,6 +167,21 @@ fun CodeBlock(
                             style = MaterialTheme.typography.labelMedium,
                         )
                     }
+                }
+                IconButton(
+                    onClick = {
+                        val safeName = filename?.substringAfterLast('/')?.substringAfterLast('\\')
+                            ?.takeIf { it.isNotBlank() }
+                        onSaveCode(content, safeName ?: "snippet.${fileExtension(language)}")
+                    },
+                    modifier = Modifier.size(34.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_download),
+                        contentDescription = "Save ${filename ?: language.ifBlank { "code" }} to a file",
+                        modifier = Modifier.size(15.dp),
+                        tint = colors.onSurfaceVariant,
+                    )
                 }
                 IconButton(
                     onClick = {
@@ -210,6 +241,25 @@ fun CodeBlock(
             }
         }
     }
+}
+
+private fun fileExtension(language: String): String = when (language.lowercase()) {
+    "python" -> "py"
+    "kotlin" -> "kt"
+    "javascript" -> "js"
+    "typescript" -> "ts"
+    "java" -> "java"
+    "c", "cpp" -> "cpp"
+    "csharp" -> "cs"
+    "rust" -> "rs"
+    "go" -> "go"
+    "json" -> "json"
+    "yaml" -> "yaml"
+    "html" -> "html"
+    "css" -> "css"
+    "bash" -> "sh"
+    "diff", "patch" -> "diff"
+    else -> "txt"
 }
 
 @Composable

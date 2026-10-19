@@ -1,8 +1,36 @@
 {
-  "catalogVersion": 3,
+  "catalogVersion": 4,
   "updated": "2026-10-19",
-  "note": "Curated offline catalogue. The app never downloads models itself; it opens huggingface.co in the browser. approxSizeBytes/blockCount/embeddingLength are catalogue estimates used only to judge fit before a download - once a file is on the device the real GGUF header replaces them.",
+  "note": "Curated offline catalogue. The app never downloads models itself; it opens huggingface.co in the browser. approxSizeBytes/blockCount/embeddingLength are catalogue estimates used only to judge fit before a download - once a file is on the device the real GGUF header replaces them. maturity=mature (or uncensored=true) entries sit behind the in-app 18+ confirmation. reasoning=true marks models that emit visible thinking traces.",
   "entries": [
+    {
+      "id": "smollm2-360m-instruct-q4km",
+      "repo": "bartowski/SmolLM2-360M-Instruct-GGUF",
+      "family": "SmolLM2",
+      "displayName": "SmolLM2 360M Instruct",
+      "paramsBillions": 0.36,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 229000000,
+      "contextLength": 8192,
+      "blockCount": 32,
+      "embeddingLength": 960,
+      "headCountKv": 5,
+      "style": [
+        "general",
+        "chat"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "Apache-2.0",
+      "uncensored": false,
+      "maturity": "general",
+      "reasoning": false,
+      "qualityScore": 16,
+      "released": "2024-11",
+      "filePattern": "*Q4_K_M.gguf",
+      "notes": "The smallest useful chat model in the catalogue. For 2 GB phones, quick drafts and testing the app itself."
+    },
     {
       "id": "qwen2.5-0.5b-instruct-q4km",
       "repo": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
@@ -15,15 +43,52 @@
       "blockCount": 24,
       "embeddingLength": 896,
       "headCountKv": 2,
-      "style": ["general", "chat"],
-      "languages": ["en", "zh"],
+      "style": [
+        "general",
+        "chat"
+      ],
+      "languages": [
+        "en",
+        "zh"
+      ],
       "license": "Apache-2.0",
       "uncensored": false,
       "qualityScore": 18,
       "released": "2024-09",
       "filePattern": "*q4_k_m*.gguf",
       "fileHint": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
-      "notes": "The lightest thing that still follows instructions. Runs on 2 GB phones; short answers only."
+      "notes": "The lightest thing that still follows instructions. Runs on 2 GB phones; short answers only.",
+      "maturity": "general",
+      "reasoning": false
+    },
+    {
+      "id": "qwen3-0.6b-q4km",
+      "repo": "Qwen/Qwen3-0.6B-GGUF",
+      "family": "Qwen3",
+      "displayName": "Qwen3 0.6B",
+      "paramsBillions": 0.6,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 397000000,
+      "contextLength": 32768,
+      "blockCount": 28,
+      "embeddingLength": 1024,
+      "headCountKv": 8,
+      "style": [
+        "general",
+        "chat",
+        "reasoning"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "Apache-2.0",
+      "uncensored": false,
+      "maturity": "general",
+      "reasoning": true,
+      "qualityScore": 30,
+      "released": "2025-04",
+      "filePattern": "*Q4_K_M.gguf",
+      "notes": "Hybrid thinking in 400 MB: it can reason step-by-step or answer directly. The best starter download on weak phones."
     },
     {
       "id": "tinyllama-1.1b-chat-q4km",
@@ -37,15 +102,22 @@
       "blockCount": 22,
       "embeddingLength": 2048,
       "headCountKv": 4,
-      "style": ["general", "chat"],
-      "languages": ["en"],
+      "style": [
+        "general",
+        "chat"
+      ],
+      "languages": [
+        "en"
+      ],
       "license": "Apache-2.0",
       "uncensored": false,
       "qualityScore": 20,
       "released": "2024-01",
       "filePattern": "*Q4_K_M.gguf",
       "fileHint": "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
-      "notes": "Old but tiny and reliable. 4k context only."
+      "notes": "Old but tiny and reliable. 4k context only.",
+      "maturity": "general",
+      "reasoning": false
     },
     {
       "id": "llama3.2-1b-instruct-q4km",
@@ -59,15 +131,80 @@
       "blockCount": 16,
       "embeddingLength": 2048,
       "headCountKv": 8,
-      "style": ["general", "chat", "analysis"],
-      "languages": ["en"],
+      "style": [
+        "general",
+        "chat",
+        "analysis"
+      ],
+      "languages": [
+        "en"
+      ],
       "license": "Llama 3 community license",
       "uncensored": false,
       "qualityScore": 34,
       "released": "2024-09",
       "filePattern": "*Q4_K_M.gguf",
       "fileHint": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
-      "notes": "Best small all-rounder for phones. Long trained context, but keep n_ctx low or the KV cache eats the RAM."
+      "notes": "Best small all-rounder for phones. Long trained context, but keep n_ctx low or the KV cache eats the RAM.",
+      "maturity": "general",
+      "reasoning": false
+    },
+    {
+      "id": "llama3.2-1b-abliterated-q4km",
+      "repo": "huihui-ai/Llama-3.2-1B-Instruct-abliterated",
+      "family": "Llama 3.2 Abliterated",
+      "displayName": "Llama 3.2 1B Abliterated",
+      "paramsBillions": 1.24,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 752000000,
+      "contextLength": 131072,
+      "blockCount": 16,
+      "embeddingLength": 2048,
+      "headCountKv": 8,
+      "style": [
+        "uncensored",
+        "chat",
+        "roleplay"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "Llama 3 community license",
+      "uncensored": true,
+      "maturity": "mature",
+      "reasoning": false,
+      "qualityScore": 32,
+      "released": "2025-01",
+      "filePattern": "*Q4_K_M.gguf",
+      "notes": "Refusal-free that fits almost any phone. Small-model limits still apply: short scenes, simple plots, some repetition."
+    },
+    {
+      "id": "gemma3-1b-it-q4km",
+      "repo": "bartowski/google_gemma-3-1b-it-GGUF",
+      "family": "Gemma 3",
+      "displayName": "Gemma 3 1B IT",
+      "paramsBillions": 1.0,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 762000000,
+      "contextLength": 32768,
+      "blockCount": 26,
+      "embeddingLength": 1152,
+      "headCountKv": 1,
+      "style": [
+        "general",
+        "chat"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "Gemma licence",
+      "uncensored": false,
+      "maturity": "general",
+      "reasoning": false,
+      "qualityScore": 36,
+      "released": "2025-03",
+      "filePattern": "*Q4_K_M.gguf",
+      "notes": "Google's 2025 small model: 140+ languages and very low KV cost thanks to its single KV head, so long context stays cheap."
     },
     {
       "id": "qwen2.5-1.5b-instruct-q4km",
@@ -81,15 +218,24 @@
       "blockCount": 28,
       "embeddingLength": 1536,
       "headCountKv": 2,
-      "style": ["general", "chat", "analysis"],
-      "languages": ["en", "zh"],
+      "style": [
+        "general",
+        "chat",
+        "analysis"
+      ],
+      "languages": [
+        "en",
+        "zh"
+      ],
       "license": "Apache-2.0",
       "uncensored": false,
       "qualityScore": 42,
       "released": "2024-09",
       "filePattern": "*q4_k_m*.gguf",
       "fileHint": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
-      "notes": "Punches well above its size and is quick on mid-range phones. A good default."
+      "notes": "Punches well above its size and is quick on mid-range phones. A good default.",
+      "maturity": "general",
+      "reasoning": false
     },
     {
       "id": "qwen2.5-coder-1.5b-instruct-q4km",
@@ -103,15 +249,141 @@
       "blockCount": 28,
       "embeddingLength": 1536,
       "headCountKv": 2,
-      "style": ["code"],
-      "languages": ["en"],
+      "style": [
+        "code"
+      ],
+      "languages": [
+        "en"
+      ],
       "license": "Apache-2.0",
       "uncensored": false,
       "qualityScore": 45,
       "released": "2024-11",
       "filePattern": "*q4_k_m*.gguf",
       "fileHint": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
-      "notes": "Code-tuned sibling of the 1.5B. Fills, patches and explains snippets far better than the general model."
+      "notes": "Code-tuned sibling of the 1.5B. Fills, patches and explains snippets far better than the general model.",
+      "maturity": "general",
+      "reasoning": false
+    },
+    {
+      "id": "qwen2.5-1.5b-abliterated-q4km",
+      "repo": "huihui-ai/Qwen2.5-1.5B-Instruct-abliterated",
+      "family": "Qwen2.5 Abliterated",
+      "displayName": "Qwen2.5 1.5B Abliterated",
+      "paramsBillions": 1.54,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 990000000,
+      "contextLength": 32768,
+      "blockCount": 28,
+      "embeddingLength": 1536,
+      "headCountKv": 2,
+      "style": [
+        "uncensored",
+        "chat",
+        "general",
+        "roleplay"
+      ],
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "license": "Apache-2.0",
+      "uncensored": true,
+      "maturity": "mature",
+      "reasoning": false,
+      "qualityScore": 40,
+      "released": "2025-02",
+      "filePattern": "*Q4_K_M.gguf",
+      "notes": "Under a gigabyte and unfiltered, but keeps Qwen2.5's instruction following. The refusal-free starter pick."
+    },
+    {
+      "id": "smollm2-1.7b-instruct-q4km",
+      "repo": "bartowski/SmolLM2-1.7B-Instruct-GGUF",
+      "family": "SmolLM2",
+      "displayName": "SmolLM2 1.7B Instruct",
+      "paramsBillions": 1.71,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 1060000000,
+      "contextLength": 8192,
+      "blockCount": 24,
+      "embeddingLength": 2048,
+      "headCountKv": 8,
+      "style": [
+        "general",
+        "chat",
+        "code"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "Apache-2.0",
+      "uncensored": false,
+      "maturity": "general",
+      "reasoning": false,
+      "qualityScore": 44,
+      "released": "2024-11",
+      "filePattern": "*Q4_K_M.gguf",
+      "notes": "Trained on 11T tokens for its size, so it punches like an older 3B. A fast, honest 1 GB daily driver."
+    },
+    {
+      "id": "qwen3-1.7b-q4km",
+      "repo": "Qwen/Qwen3-1.7B-GGUF",
+      "family": "Qwen3",
+      "displayName": "Qwen3 1.7B",
+      "paramsBillions": 1.72,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 1110000000,
+      "contextLength": 32768,
+      "blockCount": 28,
+      "embeddingLength": 2048,
+      "headCountKv": 8,
+      "style": [
+        "general",
+        "chat",
+        "analysis",
+        "reasoning"
+      ],
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "license": "Apache-2.0",
+      "uncensored": false,
+      "maturity": "general",
+      "reasoning": true,
+      "qualityScore": 52,
+      "released": "2025-04",
+      "filePattern": "*Q4_K_M.gguf",
+      "notes": "The 2025 replacement for Qwen2.5 1.5B: stronger maths, code and tool-style answers, plus optional thinking traces."
+    },
+    {
+      "id": "deepseek-r1-distill-qwen-1.5b-q4km",
+      "repo": "bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF",
+      "family": "DeepSeek R1 Distill",
+      "displayName": "DeepSeek R1 Distill Qwen 1.5B",
+      "paramsBillions": 1.54,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 1120000000,
+      "contextLength": 32768,
+      "blockCount": 28,
+      "embeddingLength": 1536,
+      "headCountKv": 2,
+      "style": [
+        "reasoning",
+        "analysis",
+        "code"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "MIT",
+      "uncensored": false,
+      "maturity": "general",
+      "reasoning": true,
+      "qualityScore": 54,
+      "released": "2025-01",
+      "filePattern": "*Q4_K_M.gguf",
+      "notes": "A pocket reasoning model: long visible <think> traces for maths and logic. Raise max tokens or it spends the budget thinking."
     },
     {
       "id": "gemma2-2b-it-q4km",
@@ -125,37 +397,50 @@
       "blockCount": 26,
       "embeddingLength": 2304,
       "headCountKv": 4,
-      "style": ["general", "chat"],
-      "languages": ["en"],
+      "style": [
+        "general",
+        "chat"
+      ],
+      "languages": [
+        "en"
+      ],
       "license": "Gemma terms of use",
       "uncensored": false,
       "qualityScore": 48,
       "released": "2024-06",
       "filePattern": "*Q4_K_M.gguf",
       "fileHint": "gemma-2-2b-it-Q4_K_M.gguf",
-      "notes": "Nicely written prose at 2B. Heavier per token than Qwen, so slower on 3 GB phones."
+      "notes": "Nicely written prose at 2B. Heavier per token than Qwen, so slower on 3 GB phones.",
+      "maturity": "general",
+      "reasoning": false
     },
     {
-      "id": "qwen2.5-3b-instruct-q4km",
-      "repo": "Qwen/Qwen2.5-3B-Instruct-GGUF",
-      "family": "Qwen2.5",
-      "displayName": "Qwen2.5 3B Instruct",
+      "id": "qwen2.5-coder-3b-instruct-q4km",
+      "repo": "Qwen/Qwen2.5-Coder-3B-Instruct-GGUF",
+      "family": "Qwen2.5 Coder",
+      "displayName": "Qwen2.5 Coder 3B Instruct",
       "paramsBillions": 3.09,
       "quant": "Q4_K_M",
-      "approxSizeBytes": 1930000000,
+      "approxSizeBytes": 1900000000,
       "contextLength": 32768,
       "blockCount": 36,
       "embeddingLength": 2048,
       "headCountKv": 2,
-      "style": ["general", "chat", "analysis"],
-      "languages": ["en", "zh"],
+      "style": [
+        "code",
+        "analysis"
+      ],
+      "languages": [
+        "en"
+      ],
       "license": "Apache-2.0",
       "uncensored": false,
-      "qualityScore": 55,
-      "released": "2024-09",
-      "filePattern": "*q4_k_m*.gguf",
-      "fileHint": "qwen2.5-3b-instruct-q4_k_m.gguf",
-      "notes": "The sweet spot for 6 GB phones: real reasoning ability at a size that still streams."
+      "maturity": "general",
+      "reasoning": false,
+      "qualityScore": 62,
+      "released": "2024-11",
+      "filePattern": "*Q4_K_M.gguf",
+      "notes": "The code pick for 6 GB phones: most of the 7B Coder's patch quality at half the download. Pairs with the diff view."
     },
     {
       "id": "llama3.2-3b-instruct-q4km",
@@ -169,15 +454,145 @@
       "blockCount": 28,
       "embeddingLength": 3072,
       "headCountKv": 8,
-      "style": ["general", "chat", "analysis"],
-      "languages": ["en"],
+      "style": [
+        "general",
+        "chat",
+        "analysis"
+      ],
+      "languages": [
+        "en"
+      ],
       "license": "Llama 3 community license",
       "uncensored": false,
       "qualityScore": 58,
       "released": "2024-09",
       "filePattern": "*Q4_K_M.gguf",
       "fileHint": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
-      "notes": "Strong instruction following. Keep n_ctx at 4k-8k: at 128k the KV cache alone would need gigabytes."
+      "notes": "Strong instruction following. Keep n_ctx at 4k-8k: at 128k the KV cache alone would need gigabytes.",
+      "maturity": "general",
+      "reasoning": false
+    },
+    {
+      "id": "qwen2.5-3b-instruct-q4km",
+      "repo": "Qwen/Qwen2.5-3B-Instruct-GGUF",
+      "family": "Qwen2.5",
+      "displayName": "Qwen2.5 3B Instruct",
+      "paramsBillions": 3.09,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 1930000000,
+      "contextLength": 32768,
+      "blockCount": 36,
+      "embeddingLength": 2048,
+      "headCountKv": 2,
+      "style": [
+        "general",
+        "chat",
+        "analysis"
+      ],
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "license": "Apache-2.0",
+      "uncensored": false,
+      "qualityScore": 55,
+      "released": "2024-09",
+      "filePattern": "*q4_k_m*.gguf",
+      "fileHint": "qwen2.5-3b-instruct-q4_k_m.gguf",
+      "notes": "The sweet spot for 6 GB phones: real reasoning ability at a size that still streams.",
+      "maturity": "general",
+      "reasoning": false
+    },
+    {
+      "id": "qwen2.5-3b-abliterated-q4km",
+      "repo": "huihui-ai/Qwen2.5-3B-Instruct-abliterated",
+      "family": "Qwen2.5 Abliterated",
+      "displayName": "Qwen2.5 3B Abliterated",
+      "paramsBillions": 3.09,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 1930000000,
+      "contextLength": 32768,
+      "blockCount": 36,
+      "embeddingLength": 2048,
+      "headCountKv": 2,
+      "style": [
+        "uncensored",
+        "general",
+        "analysis",
+        "roleplay"
+      ],
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "license": "Apache-2.0",
+      "uncensored": true,
+      "maturity": "mature",
+      "reasoning": false,
+      "qualityScore": 53,
+      "released": "2025-02",
+      "filePattern": "*Q4_K_M.gguf",
+      "notes": "For unfiltered analysis and writing help rather than pure chat: keeps the base model's structure, drops the refusals."
+    },
+    {
+      "id": "llama3.2-3b-abliterated-q4km",
+      "repo": "huihui-ai/Llama-3.2-3B-Instruct-abliterated",
+      "family": "Llama 3.2 Abliterated",
+      "displayName": "Llama 3.2 3B Abliterated",
+      "paramsBillions": 3.21,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 2020000000,
+      "contextLength": 131072,
+      "blockCount": 28,
+      "embeddingLength": 3072,
+      "headCountKv": 8,
+      "style": [
+        "uncensored",
+        "chat",
+        "roleplay",
+        "general"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "Llama 3 community license",
+      "uncensored": true,
+      "maturity": "mature",
+      "reasoning": false,
+      "qualityScore": 55,
+      "released": "2025-01",
+      "filePattern": "*Q4_K_M.gguf",
+      "notes": "The refusal-free sweet spot for 6 GB phones: coherent multi-paragraph roleplay and stories without the 7B download."
+    },
+    {
+      "id": "dolphin3-llama3.2-3b-q4km",
+      "repo": "bartowski/Dolphin3.0-Llama3.2-3B-GGUF",
+      "family": "Dolphin 3.0",
+      "displayName": "Dolphin 3.0 Llama 3.2 3B",
+      "paramsBillions": 3.21,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 2020000000,
+      "contextLength": 131072,
+      "blockCount": 28,
+      "embeddingLength": 3072,
+      "headCountKv": 8,
+      "style": [
+        "uncensored",
+        "chat",
+        "roleplay",
+        "code"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "Llama 3 community license",
+      "uncensored": true,
+      "maturity": "mature",
+      "reasoning": false,
+      "qualityScore": 57,
+      "released": "2025-01",
+      "filePattern": "*Q4_K_M.gguf",
+      "notes": "Dolphin's steerable, compliant fine-tune at 3B: follows system prompts and personas unusually literally, which roleplay wants."
     },
     {
       "id": "phi3.5-mini-instruct-q4km",
@@ -191,169 +606,114 @@
       "blockCount": 32,
       "embeddingLength": 3072,
       "headCountKv": 32,
-      "style": ["general", "analysis", "code"],
-      "languages": ["en"],
+      "style": [
+        "general",
+        "analysis",
+        "code"
+      ],
+      "languages": [
+        "en"
+      ],
       "license": "MIT",
       "uncensored": false,
       "qualityScore": 62,
       "released": "2024-08",
       "filePattern": "*Q4_K_M.gguf",
       "fileHint": "Phi-3.5-mini-instruct-Q4_K_M.gguf",
-      "notes": "Very capable for its size, but multi-head attention makes the KV cache expensive - use q8_0 KV cache and a modest context."
+      "notes": "Very capable for its size, but multi-head attention makes the KV cache expensive - use q8_0 KV cache and a modest context.",
+      "maturity": "general",
+      "reasoning": false
     },
     {
-      "id": "mistral-7b-instruct-v0.3-q4km",
-      "repo": "MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF",
-      "family": "Mistral",
-      "displayName": "Mistral 7B Instruct v0.3",
-      "paramsBillions": 7.25,
+      "id": "phi4-mini-instruct-q4km",
+      "repo": "bartowski/microsoft_Phi-4-mini-instruct-GGUF",
+      "family": "Phi-4 mini",
+      "displayName": "Phi-4 mini Instruct",
+      "paramsBillions": 3.84,
       "quant": "Q4_K_M",
-      "approxSizeBytes": 4370000000,
-      "contextLength": 32768,
-      "blockCount": 32,
-      "embeddingLength": 4096,
-      "headCountKv": 8,
-      "style": ["general", "code", "analysis"],
-      "languages": ["en"],
-      "license": "Apache-2.0",
-      "uncensored": false,
-      "qualityScore": 70,
-      "released": "2024-05",
-      "filePattern": "*Q4_K_M.gguf",
-      "fileHint": "Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
-      "notes": "The classic 7B workhorse. Needs 8 GB of RAM to be comfortable."
-    },
-    {
-      "id": "qwen2.5-7b-instruct-q4km",
-      "repo": "Qwen/Qwen2.5-7B-Instruct-GGUF",
-      "family": "Qwen2.5",
-      "displayName": "Qwen2.5 7B Instruct",
-      "paramsBillions": 7.62,
-      "quant": "Q4_K_M",
-      "approxSizeBytes": 4680000000,
-      "contextLength": 131072,
-      "blockCount": 28,
-      "embeddingLength": 3584,
-      "headCountKv": 4,
-      "style": ["general", "code", "analysis"],
-      "languages": ["en", "zh"],
-      "license": "Apache-2.0",
-      "uncensored": false,
-      "qualityScore": 74,
-      "released": "2024-09",
-      "filePattern": "*q4_k_m*.gguf",
-      "fileHint": "qwen2.5-7b-instruct-q4_k_m.gguf",
-      "notes": "Grouped-query attention keeps the KV cache small, so 8k context is affordable on 8 GB phones."
-    },
-    {
-      "id": "llama3.1-8b-instruct-q4km",
-      "repo": "lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF",
-      "family": "Llama 3.1",
-      "displayName": "Llama 3.1 8B Instruct",
-      "paramsBillions": 8.03,
-      "quant": "Q4_K_M",
-      "approxSizeBytes": 4920000000,
+      "approxSizeBytes": 2490000000,
       "contextLength": 131072,
       "blockCount": 32,
-      "embeddingLength": 4096,
+      "embeddingLength": 3072,
       "headCountKv": 8,
-      "style": ["general", "analysis", "code"],
-      "languages": ["en"],
-      "license": "Llama 3 community license",
+      "style": [
+        "general",
+        "analysis",
+        "code",
+        "reasoning"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "MIT",
       "uncensored": false,
-      "qualityScore": 78,
-      "released": "2024-07",
-      "filePattern": "*Q4_K_M.gguf",
-      "fileHint": "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
-      "notes": "The strongest thing most phones can technically load. Expect 1-3 tokens/second below 10 GB of RAM."
-    },
-    {
-      "id": "qwen2.5-coder-7b-instruct-q4km",
-      "repo": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
-      "family": "Qwen2.5 Coder",
-      "displayName": "Qwen2.5 Coder 7B",
-      "paramsBillions": 7.62,
-      "quant": "Q4_K_M",
-      "approxSizeBytes": 4680000000,
-      "contextLength": 131072,
-      "blockCount": 28,
-      "embeddingLength": 3584,
-      "headCountKv": 4,
-      "style": ["code"],
-      "languages": ["en"],
-      "license": "Apache-2.0",
-      "uncensored": false,
-      "qualityScore": 80,
-      "released": "2024-11",
-      "filePattern": "*q4_k_m*.gguf",
-      "fileHint": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
-      "notes": "The best code model that fits in 8-10 GB of RAM. Pair it with the diff view for patch-style answers."
-    },
-    {
-      "id": "dolphin-mistral-7b-q4km",
-      "repo": "TheBloke/dolphin-2.2.1-mistral-7B-GGUF",
-      "family": "Dolphin (Mistral)",
-      "displayName": "Dolphin 2.2.1 Mistral 7B",
-      "paramsBillions": 7.25,
-      "quant": "Q4_K_M",
-      "approxSizeBytes": 4370000000,
-      "contextLength": 32768,
-      "blockCount": 32,
-      "embeddingLength": 4096,
-      "headCountKv": 8,
-      "style": ["uncensored", "chat", "general"],
-      "languages": ["en"],
-      "license": "Apache-2.0",
-      "uncensored": true,
+      "maturity": "general",
+      "reasoning": true,
       "qualityScore": 66,
-      "released": "2023-11",
+      "released": "2025-02",
       "filePattern": "*Q4_K_M.gguf",
-      "fileHint": "dolphin-2.2.1-mistral-7B.Q4_K_M.gguf",
-      "notes": "Refusal-free Dolphin fine-tune of Mistral 7B. Answers without lecturing; output is entirely unfiltered, so treat it as raw text."
+      "notes": "Microsoft's textbook-trained 3.8B: unusually good at maths, logic and structured answers for its size."
     },
     {
-      "id": "openhermes-2.5-mistral-7b-q4km",
-      "repo": "TheBloke/OpenHermes-2.5-Mistral-7B-GGUF",
-      "family": "OpenHermes (Mistral)",
-      "displayName": "OpenHermes 2.5 Mistral 7B",
-      "paramsBillions": 7.25,
+      "id": "qwen3-4b-q4km",
+      "repo": "Qwen/Qwen3-4B-GGUF",
+      "family": "Qwen3",
+      "displayName": "Qwen3 4B",
+      "paramsBillions": 4.02,
       "quant": "Q4_K_M",
-      "approxSizeBytes": 4370000000,
+      "approxSizeBytes": 2500000000,
       "contextLength": 32768,
-      "blockCount": 32,
-      "embeddingLength": 4096,
+      "blockCount": 36,
+      "embeddingLength": 2560,
       "headCountKv": 8,
-      "style": ["uncensored", "general", "analysis"],
-      "languages": ["en"],
+      "style": [
+        "general",
+        "chat",
+        "analysis",
+        "code",
+        "reasoning"
+      ],
+      "languages": [
+        "en",
+        "zh"
+      ],
       "license": "Apache-2.0",
-      "uncensored": true,
-      "qualityScore": 70,
-      "released": "2023-11",
+      "uncensored": false,
+      "maturity": "general",
+      "reasoning": true,
+      "qualityScore": 72,
+      "released": "2025-04",
       "filePattern": "*Q4_K_M.gguf",
-      "fileHint": "openhermes-2.5-mistral-7b.Q4_K_M.gguf",
-      "notes": "Broadly capable, lightly aligned Mistral tune. Usually the best refusal-free choice at 7B."
+      "notes": "The sweet spot of the whole catalogue: near-7B quality, thinking mode, and it still fits a 6-8 GB phone at 8k context."
     },
     {
-      "id": "nous-hermes-2-mistral-7b-dpo-q4km",
-      "repo": "TheBloke/Nous-Hermes-2-Mistral-7B-DPO-GGUF",
-      "family": "Nous Hermes 2 (Mistral)",
-      "displayName": "Nous Hermes 2 Mistral 7B DPO",
-      "paramsBillions": 7.25,
+      "id": "gemma3-4b-it-q4km",
+      "repo": "bartowski/google_gemma-3-4B-it-GGUF",
+      "family": "Gemma 3",
+      "displayName": "Gemma 3 4B IT",
+      "paramsBillions": 4.3,
       "quant": "Q4_K_M",
-      "approxSizeBytes": 4370000000,
-      "contextLength": 32768,
-      "blockCount": 32,
-      "embeddingLength": 4096,
-      "headCountKv": 8,
-      "style": ["uncensored", "chat", "general"],
-      "languages": ["en"],
-      "license": "Apache-2.0",
-      "uncensored": true,
-      "qualityScore": 69,
-      "released": "2024-02",
+      "approxSizeBytes": 2630000000,
+      "contextLength": 131072,
+      "blockCount": 34,
+      "embeddingLength": 2560,
+      "headCountKv": 4,
+      "style": [
+        "general",
+        "chat",
+        "analysis"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "Gemma licence",
+      "uncensored": false,
+      "maturity": "general",
+      "reasoning": false,
+      "qualityScore": 68,
+      "released": "2025-03",
       "filePattern": "*Q4_K_M.gguf",
-      "fileHint": "Nous-Hermes-2-Mistral-7B-DPO.Q4_K_M.gguf",
-      "notes": "Conversational and willing; good at staying in a persona without breaking character."
+      "notes": "Multimodal weights (text works today; image input needs the mmproj file). Sliding-window attention keeps 128k context affordable."
     },
     {
       "id": "wizardlm-7b-uncensored-q4km",
@@ -367,15 +727,234 @@
       "blockCount": 32,
       "embeddingLength": 4096,
       "headCountKv": 32,
-      "style": ["uncensored", "general"],
-      "languages": ["en"],
+      "style": [
+        "uncensored",
+        "general"
+      ],
+      "languages": [
+        "en"
+      ],
       "license": "See repository",
       "uncensored": true,
       "qualityScore": 58,
       "released": "2023-07",
       "filePattern": "*Q4_K_M.gguf",
       "fileHint": "wizardlm-7b-uncensored.Q4_K_M.gguf",
-      "notes": "Older refusal-free tune. Weaker than the Mistral-based ones, but 4k context makes it lighter on RAM."
+      "notes": "Older refusal-free tune. Weaker than the Mistral-based ones, but 4k context makes it lighter on RAM.",
+      "maturity": "mature",
+      "reasoning": false
+    },
+    {
+      "id": "mistral-7b-instruct-v0.3-q4km",
+      "repo": "MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF",
+      "family": "Mistral",
+      "displayName": "Mistral 7B Instruct v0.3",
+      "paramsBillions": 7.25,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 4370000000,
+      "contextLength": 32768,
+      "blockCount": 32,
+      "embeddingLength": 4096,
+      "headCountKv": 8,
+      "style": [
+        "general",
+        "code",
+        "analysis"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "Apache-2.0",
+      "uncensored": false,
+      "qualityScore": 70,
+      "released": "2024-05",
+      "filePattern": "*Q4_K_M.gguf",
+      "fileHint": "Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
+      "notes": "The classic 7B workhorse. Needs 8 GB of RAM to be comfortable.",
+      "maturity": "general",
+      "reasoning": false
+    },
+    {
+      "id": "dolphin-mistral-7b-q4km",
+      "repo": "TheBloke/dolphin-2.2.1-mistral-7B-GGUF",
+      "family": "Dolphin (Mistral)",
+      "displayName": "Dolphin 2.2.1 Mistral 7B",
+      "paramsBillions": 7.25,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 4370000000,
+      "contextLength": 32768,
+      "blockCount": 32,
+      "embeddingLength": 4096,
+      "headCountKv": 8,
+      "style": [
+        "uncensored",
+        "chat",
+        "general",
+        "roleplay"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "Apache-2.0",
+      "uncensored": true,
+      "qualityScore": 66,
+      "released": "2023-11",
+      "filePattern": "*Q4_K_M.gguf",
+      "fileHint": "dolphin-2.2.1-mistral-7B.Q4_K_M.gguf",
+      "notes": "Refusal-free Dolphin fine-tune of Mistral 7B. Answers without lecturing; output is entirely unfiltered, so treat it as raw text.",
+      "maturity": "mature",
+      "reasoning": false
+    },
+    {
+      "id": "openhermes-2.5-mistral-7b-q4km",
+      "repo": "TheBloke/OpenHermes-2.5-Mistral-7B-GGUF",
+      "family": "OpenHermes (Mistral)",
+      "displayName": "OpenHermes 2.5 Mistral 7B",
+      "paramsBillions": 7.25,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 4370000000,
+      "contextLength": 32768,
+      "blockCount": 32,
+      "embeddingLength": 4096,
+      "headCountKv": 8,
+      "style": [
+        "uncensored",
+        "general",
+        "analysis"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "Apache-2.0",
+      "uncensored": true,
+      "qualityScore": 70,
+      "released": "2023-11",
+      "filePattern": "*Q4_K_M.gguf",
+      "fileHint": "openhermes-2.5-mistral-7b.Q4_K_M.gguf",
+      "notes": "Broadly capable, lightly aligned Mistral tune. Usually the best refusal-free choice at 7B.",
+      "maturity": "mature",
+      "reasoning": false
+    },
+    {
+      "id": "nous-hermes-2-mistral-7b-dpo-q4km",
+      "repo": "TheBloke/Nous-Hermes-2-Mistral-7B-DPO-GGUF",
+      "family": "Nous Hermes 2 (Mistral)",
+      "displayName": "Nous Hermes 2 Mistral 7B DPO",
+      "paramsBillions": 7.25,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 4370000000,
+      "contextLength": 32768,
+      "blockCount": 32,
+      "embeddingLength": 4096,
+      "headCountKv": 8,
+      "style": [
+        "uncensored",
+        "chat",
+        "general",
+        "roleplay"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "Apache-2.0",
+      "uncensored": true,
+      "qualityScore": 69,
+      "released": "2024-02",
+      "filePattern": "*Q4_K_M.gguf",
+      "fileHint": "Nous-Hermes-2-Mistral-7B-DPO.Q4_K_M.gguf",
+      "notes": "Conversational and willing; good at staying in a persona without breaking character.",
+      "maturity": "mature",
+      "reasoning": false
+    },
+    {
+      "id": "dolphin3-mistral-7b-q4km",
+      "repo": "bartowski/Dolphin3.0-Mistral-7B-GGUF",
+      "family": "Dolphin 3.0",
+      "displayName": "Dolphin 3.0 Mistral 7B",
+      "paramsBillions": 7.25,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 4370000000,
+      "contextLength": 32768,
+      "blockCount": 32,
+      "embeddingLength": 4096,
+      "headCountKv": 8,
+      "style": [
+        "uncensored",
+        "chat",
+        "general",
+        "roleplay",
+        "code"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "Apache-2.0",
+      "uncensored": true,
+      "maturity": "mature",
+      "reasoning": false,
+      "qualityScore": 70,
+      "released": "2024-12",
+      "filePattern": "*Q4_K_M.gguf",
+      "notes": "The current Dolphin: better coding and function-style replies than the 2.x line, still fully steerable and refusal-free."
+    },
+    {
+      "id": "qwen2.5-7b-instruct-q4km",
+      "repo": "Qwen/Qwen2.5-7B-Instruct-GGUF",
+      "family": "Qwen2.5",
+      "displayName": "Qwen2.5 7B Instruct",
+      "paramsBillions": 7.62,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 4680000000,
+      "contextLength": 131072,
+      "blockCount": 28,
+      "embeddingLength": 3584,
+      "headCountKv": 4,
+      "style": [
+        "general",
+        "code",
+        "analysis"
+      ],
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "license": "Apache-2.0",
+      "uncensored": false,
+      "qualityScore": 74,
+      "released": "2024-09",
+      "filePattern": "*q4_k_m*.gguf",
+      "fileHint": "qwen2.5-7b-instruct-q4_k_m.gguf",
+      "notes": "Grouped-query attention keeps the KV cache small, so 8k context is affordable on 8 GB phones.",
+      "maturity": "general",
+      "reasoning": false
+    },
+    {
+      "id": "qwen2.5-coder-7b-instruct-q4km",
+      "repo": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+      "family": "Qwen2.5 Coder",
+      "displayName": "Qwen2.5 Coder 7B",
+      "paramsBillions": 7.62,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 4680000000,
+      "contextLength": 131072,
+      "blockCount": 28,
+      "embeddingLength": 3584,
+      "headCountKv": 4,
+      "style": [
+        "code"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "Apache-2.0",
+      "uncensored": false,
+      "qualityScore": 80,
+      "released": "2024-11",
+      "filePattern": "*q4_k_m*.gguf",
+      "fileHint": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+      "notes": "The best code model that fits in 8-10 GB of RAM. Pair it with the diff view for patch-style answers.",
+      "maturity": "general",
+      "reasoning": false
     },
     {
       "id": "qwen2.5-7b-instruct-abliterated-q4km",
@@ -389,15 +968,174 @@
       "blockCount": 28,
       "embeddingLength": 3584,
       "headCountKv": 4,
-      "style": ["uncensored", "general", "analysis"],
-      "languages": ["en", "zh"],
+      "style": [
+        "uncensored",
+        "general",
+        "analysis"
+      ],
+      "languages": [
+        "en",
+        "zh"
+      ],
       "license": "See repository",
       "uncensored": true,
       "qualityScore": 71,
       "released": "2025-01",
       "filePattern": "*Q4_K_M*.gguf",
       "fileHint": "huihui-Qwen2.5-7B-Instruct-abliterated.Q4_K_M.gguf",
-      "notes": "Community 'abliterated' build: the refusal direction is removed from an otherwise stock Qwen2.5 7B, so capability is close to the official model. If that exact file is gone, pick any Q4_K_M from the repository."
+      "notes": "Community 'abliterated' build: the refusal direction is removed from an otherwise stock Qwen2.5 7B, so capability is close to the official model. If that exact file is gone, pick any Q4_K_M from the repository.",
+      "maturity": "mature",
+      "reasoning": false
+    },
+    {
+      "id": "deepseek-r1-distill-qwen-7b-q4km",
+      "repo": "bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF",
+      "family": "DeepSeek R1 Distill",
+      "displayName": "DeepSeek R1 Distill Qwen 7B",
+      "paramsBillions": 7.62,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 4680000000,
+      "contextLength": 32768,
+      "blockCount": 28,
+      "embeddingLength": 3584,
+      "headCountKv": 4,
+      "style": [
+        "reasoning",
+        "analysis",
+        "code"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "MIT",
+      "uncensored": false,
+      "maturity": "general",
+      "reasoning": true,
+      "qualityScore": 77,
+      "released": "2025-01",
+      "filePattern": "*Q4_K_M.gguf",
+      "notes": "Full-strength distilled reasoning: olympiad-style problem solving on a phone. Budget 2048+ tokens so the answer survives the thinking."
+    },
+    {
+      "id": "llama3.1-8b-instruct-q4km",
+      "repo": "lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF",
+      "family": "Llama 3.1",
+      "displayName": "Llama 3.1 8B Instruct",
+      "paramsBillions": 8.03,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 4920000000,
+      "contextLength": 131072,
+      "blockCount": 32,
+      "embeddingLength": 4096,
+      "headCountKv": 8,
+      "style": [
+        "general",
+        "analysis",
+        "code"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "Llama 3 community license",
+      "uncensored": false,
+      "qualityScore": 78,
+      "released": "2024-07",
+      "filePattern": "*Q4_K_M.gguf",
+      "fileHint": "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
+      "notes": "The strongest thing most phones can technically load. Expect 1-3 tokens/second below 10 GB of RAM.",
+      "maturity": "general",
+      "reasoning": false
+    },
+    {
+      "id": "llama3.1-8b-abliterated-q4km",
+      "repo": "huihui-ai/Llama-3.1-8B-Instruct-abliterated",
+      "family": "Llama 3.1 Abliterated",
+      "displayName": "Llama 3.1 8B Abliterated",
+      "paramsBillions": 8.03,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 4920000000,
+      "contextLength": 131072,
+      "blockCount": 32,
+      "embeddingLength": 4096,
+      "headCountKv": 8,
+      "style": [
+        "uncensored",
+        "general",
+        "chat",
+        "roleplay"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "Llama 3 community license",
+      "uncensored": true,
+      "maturity": "mature",
+      "reasoning": false,
+      "qualityScore": 74,
+      "released": "2025-01",
+      "filePattern": "*Q4_K_M.gguf",
+      "notes": "Full Llama 3.1 8B capability with the refusal direction removed. The strongest refusal-free generalist here; wants 12 GB."
+    },
+    {
+      "id": "l3-8b-stheno-v3.2-q4km",
+      "repo": "bartowski/L3-8B-Stheno-v3.2-GGUF",
+      "family": "Stheno",
+      "displayName": "L3 8B Stheno v3.2 (Roleplay)",
+      "paramsBillions": 8.03,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 4920000000,
+      "contextLength": 8192,
+      "blockCount": 32,
+      "embeddingLength": 4096,
+      "headCountKv": 8,
+      "style": [
+        "roleplay",
+        "chat",
+        "uncensored"
+      ],
+      "languages": [
+        "en"
+      ],
+      "license": "Llama 3 community license",
+      "uncensored": true,
+      "maturity": "mature",
+      "reasoning": false,
+      "qualityScore": 71,
+      "released": "2024-07",
+      "filePattern": "*Q4_K_M.gguf",
+      "notes": "Purpose-built for character roleplay and adult fiction: stays in character, writes prose instead of lists. 18+ content by design."
+    },
+    {
+      "id": "qwen3-8b-q4km",
+      "repo": "Qwen/Qwen3-8B-GGUF",
+      "family": "Qwen3",
+      "displayName": "Qwen3 8B",
+      "paramsBillions": 8.19,
+      "quant": "Q4_K_M",
+      "approxSizeBytes": 5020000000,
+      "contextLength": 32768,
+      "blockCount": 36,
+      "embeddingLength": 4096,
+      "headCountKv": 8,
+      "style": [
+        "general",
+        "chat",
+        "analysis",
+        "code",
+        "reasoning"
+      ],
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "license": "Apache-2.0",
+      "uncensored": false,
+      "maturity": "general",
+      "reasoning": true,
+      "qualityScore": 83,
+      "released": "2025-04",
+      "filePattern": "*Q4_K_M.gguf",
+      "notes": "The flagship pick for 12 GB phones: the strongest open 8B here, with switchable thinking and excellent code."
     }
   ]
 }
