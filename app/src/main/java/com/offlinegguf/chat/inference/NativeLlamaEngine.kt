@@ -36,6 +36,8 @@ data class LoadResult(
     val message: String?,
     val report: ModelReport,
     val elapsedMs: Long,
+    /** The same file with the same settings was already resident; nothing was re-read. */
+    val alreadyLoaded: Boolean = false,
 ) {
     companion object {
         fun unavailable(message: String) = LoadResult(false, message, ModelReport.Empty, 0)
@@ -69,6 +71,18 @@ class NativeLlamaEngine : Closeable {
     private val handle = AtomicLong(0L)
     private val generating = AtomicBoolean(false)
     private val closed = AtomicBoolean(false)
+
+    /**
+     * How many times a model has actually been loaded in this process. Logged
+     * with every generation: a value that climbs per message would mean the
+     * weights are being re-mapped over and over, which is the difference
+     * between a fast reply and a multi-minute one.
+     */
+    private val loadCount = AtomicLong(0L)
+    val loads: Long get() = loadCount.get()
+
+    /** Last successful load request, used to skip a redundant re-load. */
+    private var lastLoad: LoadRequest? = null
 
     val isAvailable: Boolean get() = LlamaNative.isAvailable
 
@@ -123,6 +137,22 @@ class NativeLlamaEngine : Closeable {
                 val session = ensureSession()
                 if (session == 0L) return@withLock LoadResult.unavailable("could not create an engine session")
 
+                // Already resident with identical settings: return it instead of
+                // unloading and re-reading hundreds of megabytes. This is the
+                // difference between "open an old chat" being instant and
+                // re-mapping the model (and dropping the KV cache) every time.
+                if (lastLoad == request && _loadedModelPath.value == request.path &&
+                    runCatching { LlamaNative.nativeIsLoaded(session) }.getOrDefault(false)
+                ) {
+                    return@withLock LoadResult(
+                        success = true,
+                        message = null,
+                        report = reportLocked(session),
+                        elapsedMs = 0,
+                        alreadyLoaded = true,
+                    )
+                }
+
                 // A different model is resident: unload before loading, or the
                 // previous weights stay mapped and the process gets killed.
                 if (runCatching { LlamaNative.nativeIsLoaded(session) }.getOrDefault(false)) {
@@ -140,6 +170,8 @@ class NativeLlamaEngine : Closeable {
                         request.batch,
                         request.useMmap,
                         request.useMlock,
+                        request.kvType.ifBlank { "f16" },
+                        request.kvType.ifBlank { "f16" },
                         request.loraPaths.toTypedArray(),
                         if (request.loraScales.isEmpty()) FloatArray(0) else request.loraScales.toFloatArray(),
                     )
@@ -152,6 +184,8 @@ class NativeLlamaEngine : Closeable {
                     return@withLock LoadResult(false, message.ifBlank { "model failed to load" }, ModelReport.Empty, elapsed)
                 }
                 _loadedModelPath.value = request.path
+                lastLoad = request
+                loadCount.incrementAndGet()
                 LoadResult(true, null, reportLocked(session), elapsed)
             }
         }
@@ -165,6 +199,7 @@ class NativeLlamaEngine : Closeable {
                 requestStop()
                 runCatching { LlamaNative.nativeUnloadModel(session) }
                 _loadedModelPath.value = null
+                lastLoad = null
             }
         }
     }

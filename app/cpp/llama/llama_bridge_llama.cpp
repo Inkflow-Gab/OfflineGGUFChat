@@ -5,6 +5,10 @@
 #include "llama_compat.h"
 #include "util/utf8.h"
 
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -60,6 +64,7 @@ struct BridgeSession {
     std::atomic<bool> stop_requested{false};
     int32_t n_ctx = 0;
     int32_t n_batch = 512;
+    int32_t n_threads = 0;
     std::string last_error;
 };
 
@@ -118,6 +123,7 @@ bool BridgeLoad(BridgeSession *s, const std::string &path, const BridgeLoadParam
         train_ctx > 0 ? std::min<int32_t>(params.n_ctx, train_ctx) : params.n_ctx);
     cp.n_batch = static_cast<uint32_t>(std::max<int32_t>(
         8, std::min<int32_t>(params.n_batch, static_cast<int32_t>(cp.n_ctx))));
+    compat::SetKvCacheType(cp, params.kv_type_k, params.kv_type_v);
     compat::SetContextThreads(cp, params.n_threads);
 #if defined(OFFLINEGGUF_LLAMA_HAS_ABORT_CALLBACK)
     cp.abort_callback = &StopRequested;
@@ -134,6 +140,7 @@ bool BridgeLoad(BridgeSession *s, const std::string &path, const BridgeLoadParam
 
     s->n_ctx = static_cast<int32_t>(cp.n_ctx);
     s->n_batch = static_cast<int32_t>(cp.n_batch);
+    s->n_threads = params.n_threads > 0 ? params.n_threads : 0;
 
     for (const auto &lora : params.loras) {
         if (!compat::SupportsAdapters()) {
@@ -168,6 +175,13 @@ bool BridgeGenerate(BridgeSession *s, const std::string &prompt, const BridgeSam
 
     BridgeStats stats;
     const auto started = std::chrono::steady_clock::now();
+    auto micros_since = [](const std::chrono::steady_clock::time_point &from) {
+        return std::chrono::duration_cast<std::chrono::microseconds>(
+                   std::chrono::steady_clock::now() - from)
+            .count();
+    };
+    // True once the callback has handed the first piece of text to Kotlin.
+    bool first_token_sent = false;
     std::string error;
     llama_sampler *chain = nullptr;
 
@@ -196,6 +210,10 @@ bool BridgeGenerate(BridgeSession *s, const std::string &prompt, const BridgeSam
         return finish(false);
     }
     stats.prompt_tokens = static_cast<int32_t>(tokens.size());
+    stats.tokenize_micros = micros_since(started);
+    stats.n_ctx = s->n_ctx;
+    stats.n_batch = s->n_batch;
+    stats.n_threads = s->n_threads;
 
     // Never ask the cache for more than it holds: keep the newest tokens, which
     // is what matters for a chat tail. (Older turns stay in the DB, not the KV.)
@@ -253,6 +271,9 @@ bool BridgeGenerate(BridgeSession *s, const std::string &prompt, const BridgeSam
     };
 
     // ---- prompt evaluation --------------------------------------------------
+    stats.reused_tokens = static_cast<int32_t>(reuse);
+    stats.prefill_tokens = static_cast<int32_t>(tokens.size() - reuse);
+    const auto prefill_started = std::chrono::steady_clock::now();
     if (reuse < tokens.size()) {
         const int32_t todo = static_cast<int32_t>(tokens.size() - reuse);
         if (!decode(tokens.data() + reuse, todo)) {
@@ -261,6 +282,7 @@ bool BridgeGenerate(BridgeSession *s, const std::string &prompt, const BridgeSam
             return finish(false);
         }
     }
+    stats.prefill_micros = micros_since(prefill_started);
 
     // ---- generation ---------------------------------------------------------
     ByteStream stream;
@@ -285,6 +307,13 @@ bool BridgeGenerate(BridgeSession *s, const std::string &prompt, const BridgeSam
             const size_t flushable = stream.Flushable();
             if (flushable > 0) {
                 callbacks.on_token(callbacks.user, stream.Data(), static_cast<int>(flushable));
+                if (!first_token_sent) {
+                    first_token_sent = true;
+                    // Time from the very start of BridgeGenerate: tokenize +
+                    // prefill + the first sampling step. This is the number the
+                    // user experiences as "nothing is happening".
+                    stats.first_token_micros = micros_since(started);
+                }
                 stream.Consume(flushable);
             }
         }
@@ -292,7 +321,11 @@ bool BridgeGenerate(BridgeSession *s, const std::string &prompt, const BridgeSam
         ++generated;
         stats.tokens_generated = generated;
 
-        if (!decode(&token, 1)) {
+        const auto decode_started = std::chrono::steady_clock::now();
+        ++stats.decode_calls;
+        const bool decoded = decode(&token, 1);
+        stats.decode_micros += micros_since(decode_started);
+        if (!decoded) {
             stats.truncated = true;
             break;
         }
@@ -308,6 +341,20 @@ bool BridgeGenerate(BridgeSession *s, const std::string &prompt, const BridgeSam
     }
 
     stats.context_used = compat::ContextUsed(s->ctx);
+#ifdef __ANDROID__
+    // One line that answers "where did the time go?" without a debugger.
+    __android_log_print(
+        ANDROID_LOG_INFO, "OfflineGGUF",
+        "gen-profile prompt=%d reused=%d prefill=%d (%.0f ms) ttft=%.0f ms "
+        "decode=%d calls in %.0f ms (%.1f tok/s) ctx=%d/%d threads=%d batch=%d",
+        stats.prompt_tokens, stats.reused_tokens, stats.prefill_tokens,
+        stats.prefill_micros / 1000.0, stats.first_token_micros / 1000.0,
+        stats.decode_calls, stats.decode_micros / 1000.0,
+        stats.decode_micros > 0
+            ? stats.tokens_generated * 1e6 / static_cast<double>(stats.decode_micros)
+            : 0.0,
+        stats.context_used, stats.n_ctx, stats.n_threads, stats.n_batch);
+#endif
     return finish(true);
 }
 

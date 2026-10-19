@@ -30,11 +30,17 @@ data class DeviceProfile(
     val isArm64: Boolean get() = abiList.any { it == "arm64-v8a" }
 
     /**
-     * Keep a core available for Android/UI. On a one- or two-core phone, use
-     * fewer workers rather than forcing two threads and starving the foreground.
+     * Keep a core available for Android/UI, but never hand a multi-core phone a
+     * single worker: 1 thread made a 0.6B Qwen decode several times slower,
+     * which turns a short answer into minutes once reasoning is involved.
+     * Low-RAM devices get the floor at 2 rather than 1 for the same reason.
      */
     val suggestedThreads: Int
-        get() = if (lowRamDevice) 1 else (cores - 1).coerceIn(1, 4)
+        get() = when {
+            cores <= 2 -> 1
+            lowRamDevice -> (cores - 2).coerceIn(2, 4)
+            else -> (cores - 1).coerceIn(2, 4)
+        }
 
     /** Smaller prompt batches reduce temporary allocations on memory-tight phones. */
     val suggestedBatch: Int

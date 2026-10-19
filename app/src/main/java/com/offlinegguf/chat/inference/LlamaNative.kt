@@ -83,6 +83,8 @@ object LlamaNative {
         nBatch: Int,
         useMmap: Boolean,
         useMlock: Boolean,
+        kvTypeK: String,
+        kvTypeV: String,
         loraPaths: Array<String>,
         loraScales: FloatArray,
     ): Boolean
@@ -114,9 +116,11 @@ object LlamaNative {
     /**
      * Blocking generate. Returns null when nothing started (read
      * [nativeLastError]); otherwise the stats array laid out as
-     * `{tokensGenerated, promptTokens, contextUsed, microseconds, flags}` where
-     * bit 0 of flags means "context truncated the prompt" and bit 1 means
-     * "cancelled by the user".
+     * `{tokensGenerated, promptTokens, contextUsed, microseconds, flags,
+     * tokenizeµs, prefillµs, firstTokenµs, decodeµs, prefillTokens,
+     * reusedTokens, decodeCalls, nCtx, threads, batch}` where bit 0 of flags
+     * means "context truncated the prompt" and bit 1 means "cancelled by the
+     * user". The tail was appended in 1.5.2; older arrays still parse.
      *
      * [ints] and [floats] are positional — see [SamplingParams.toInts].
      */

@@ -121,6 +121,9 @@ if(OFFLINEGGUF_WITH_LLAMA)
               "const llama_vocab * v = nullptr; (void)llama_vocab_get_add_bos(v);")
     ogg_probe(OFFLINEGGUF_LLAMA_HAS_LOAD_MODE
               "llama_model_params p = llama_model_default_params(); p.load_mode = LLAMA_LOAD_MODE_MMAP;")
+    ogg_probe(OFFLINEGGUF_LLAMA_HAS_KV_TYPE
+              "llama_context_params p = llama_context_default_params(); "
+              "p.type_k = GGML_TYPE_Q8_0; p.type_v = GGML_TYPE_Q8_0;")
     ogg_probe(OFFLINEGGUF_LLAMA_HAS_CTX_THREADS
               "llama_context_params p = llama_context_default_params(); p.n_threads = 4;")
     ogg_probe(OFFLINEGGUF_LLAMA_HAS_ABORT_CALLBACK

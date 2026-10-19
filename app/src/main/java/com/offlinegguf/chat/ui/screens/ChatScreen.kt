@@ -29,12 +29,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -110,6 +112,7 @@ fun ChatScreen(
     var menuOpen by remember { mutableStateOf(false) }
     var modeMenuOpen by remember { mutableStateOf(false) }
     var showGauge by remember { mutableStateOf(false) }
+    var showDiagnostics by remember { mutableStateOf(false) }
 
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { viewModel.attach(it) }
@@ -315,6 +318,36 @@ fun ChatScreen(
                             },
                         )
                         DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (settings.localReasoning) {
+                                        "Reasoning: on (slower, thinks first)"
+                                    } else {
+                                        "Reasoning: off (fast, direct answers)"
+                                    },
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(painterResource(R.drawable.ic_sparkle), null, Modifier.size(16.dp))
+                            },
+                            // Only meaningful for a resident model with its own
+                            // reasoning switch; cloud models have their own.
+                            enabled = state.model != null && state.modelSupportsThinking &&
+                                state.cloudTarget == null,
+                            onClick = {
+                                menuOpen = false
+                                viewModel.setLocalReasoning(!settings.localReasoning)
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Generation details") },
+                            leadingIcon = {
+                                Icon(painterResource(R.drawable.ic_gauge), null, Modifier.size(16.dp))
+                            },
+                            enabled = state.lastTrace != null,
+                            onClick = { menuOpen = false; showDiagnostics = true },
+                        )
+                        DropdownMenuItem(
                             text = { Text("Unload model") },
                             leadingIcon = {
                                 Icon(painterResource(R.drawable.ic_archive), null, Modifier.size(16.dp))
@@ -333,6 +366,37 @@ fun ChatScreen(
                 }
             },
         )
+
+        if (showDiagnostics) {
+            val trace = state.lastTrace
+            AlertDialog(
+                onDismissRequest = { showDiagnostics = false },
+                title = { Text("Generation details") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = trace?.summary() ?: "No generation has run yet.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            text = com.offlinegguf.chat.inference.InferenceTrace
+                                .audit(trace ?: com.offlinegguf.chat.inference.InferenceTrace())
+                                ?: "No bottleneck detected in the last run.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = "Logcat tag: InferenceTrace · model loads: ${trace?.modelLoads ?: 0}",
+                            style = com.offlinegguf.chat.ui.theme.MetaKeyText,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showDiagnostics = false }) { Text("Close") }
+                },
+            )
+        }
 
         AnimatedVisibility(
             visible = showGauge && state.model != null && state.cloudTarget == null,

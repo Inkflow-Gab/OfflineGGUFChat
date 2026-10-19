@@ -22,6 +22,10 @@ struct BridgeLoadParams {
     int32_t n_batch = 512;
     bool use_mmap = true;
     bool use_mlock = false;
+    // KV-cache element types ("f16", "bf16", "q8_0", "q4_0"). f16 is the
+    // default; q8_0 halves the cache on phones that cannot afford f16.
+    std::string kv_type_k = "f16";
+    std::string kv_type_v = "f16";
     // LoRA adapters applied on top of the base model: (path, scale).
     std::vector<std::pair<std::string, float>> loras;
 };
@@ -50,6 +54,23 @@ struct BridgeStats {
     int64_t microseconds = 0;
     bool truncated = false;
     bool cancelled = false;
+
+    // ---- latency breakdown -------------------------------------------------
+    // The three numbers that separate "the prompt was expensive" from "the
+    // model is rambling": tokenization, prompt evaluation, and the wait for
+    // the first generated token. All measured on the generating thread.
+    int64_t tokenize_micros = 0;
+    int64_t prefill_micros = 0;
+    /// Start of generation -> first piece handed to the callback.
+    int64_t first_token_micros = 0;
+    /// Sum of the per-token decode steps (the steady-state cost).
+    int64_t decode_micros = 0;
+    int32_t prefill_tokens = 0;   // prompt tokens actually evaluated this run
+    int32_t reused_tokens = 0;    // prompt tokens served from the KV cache
+    int32_t decode_calls = 0;     // llama_decode invocations (prefill excluded)
+    int32_t n_ctx = 0;
+    int32_t n_threads = 0;
+    int32_t n_batch = 0;
 };
 
 // Invoked from the generating thread. `bytes` is raw UTF-8 for one tokenizer

@@ -124,6 +124,21 @@ holds code, diffs and gauges does not need a fourth visual channel. See
   WebView: JavaScript on, but the network, file system and DOM storage off —
   even `fetch()` cannot phone home. `console.log` is mirrored into the page.
 
+**Slow first answer? It tells you where the time went**
+
+- Every generation logs one line and keeps it under *⋮ → Generation details*:
+  prompt tokens, tokenize/prefill time, time-to-first-token, first time text was
+  on screen, decode speed, thread count, context, batch, and how many times the
+  model was loaded.
+- `adb logcat -s InferenceTrace OfflineGGUF` shows it live. A 28-token "hello"
+  that takes minutes prints its verdict: hidden reasoning, slow decode, or
+  prompt evaluation.
+- Reasoning is **off by default** for models that have it (Qwen3 and friends).
+  Turning it on is one menu tap; the app switches the model's own template, it
+  does not strip tokens after the fact. Off, a greeting is answered directly.
+- The model is loaded once and reused: opening an old chat no longer re-reads
+  the weights or discards the KV cache.
+
 **Navigation**
 
 - Four animated tabs — Chat, Models, Discover, Cloud — with springy icons,

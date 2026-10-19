@@ -41,6 +41,14 @@ data class AppSettings(
 
     // ---- chat behaviour ----
     val showThinking: Boolean = true,
+    /**
+     * Ask local reasoning models (Qwen3 and friends) to think before answering.
+     *
+     * Off by default: on a phone a hidden reasoning block is the difference
+     * between a second and several minutes before anything readable appears.
+     * The model's own template is used to switch it off — nothing is stripped.
+     */
+    val localReasoning: Boolean = false,
     val chatMode: ChatMode = ChatMode.BALANCED,
     val keepScreenOn: Boolean = false,
     val autoLoadLastModel: Boolean = true,
@@ -134,6 +142,7 @@ class SettingsStore(private val context: Context) {
         val SHOW_LINE_NUMBERS = booleanPreferencesKey("show_line_numbers")
 
         val SHOW_THINKING = booleanPreferencesKey("show_thinking")
+        val LOCAL_REASONING = booleanPreferencesKey("local_reasoning")
         val CHAT_MODE = stringPreferencesKey("chat_mode")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val AUTO_LOAD_LAST = booleanPreferencesKey("auto_load_last_model")
@@ -182,6 +191,7 @@ class SettingsStore(private val context: Context) {
                 highContrast = prefs[Keys.HIGH_CONTRAST] ?: false,
                 showLineNumbers = prefs[Keys.SHOW_LINE_NUMBERS] ?: true,
                 showThinking = prefs[Keys.SHOW_THINKING] ?: true,
+                localReasoning = prefs[Keys.LOCAL_REASONING] ?: false,
                 chatMode = ChatMode.fromName(prefs[Keys.CHAT_MODE]),
                 keepScreenOn = prefs[Keys.KEEP_SCREEN_ON] ?: false,
                 autoLoadLastModel = prefs[Keys.AUTO_LOAD_LAST] ?: true,
@@ -213,6 +223,8 @@ class SettingsStore(private val context: Context) {
         }
 
     suspend fun setThemeMode(mode: ThemeMode) = edit { it[Keys.THEME_MODE] = mode.name }
+
+    suspend fun setLocalReasoning(enabled: Boolean) = edit { it[Keys.LOCAL_REASONING] = enabled }
     suspend fun setFontScale(scale: Float) = edit { it[Keys.FONT_SCALE] = scale.coerceIn(0.85f, 1.35f) }
     suspend fun setReduceMotion(value: Boolean) = edit { it[Keys.REDUCE_MOTION] = value }
     suspend fun setHighContrast(value: Boolean) = edit { it[Keys.HIGH_CONTRAST] = value }
