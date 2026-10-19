@@ -67,15 +67,21 @@ class FormatsTest {
     @Test
     fun `relative time is coarse on purpose`() {
         val now = 1_700_000_000_000L
-        assertEquals("just now", Formats.relativeTime(now + 60_000, now))
+        // Long on purpose. `40 * 86_400_000` is Int arithmetic and overflows to a
+        // negative, which puts the timestamp in the future and quietly turns every
+        // bucket coarser than a week into "just now".
+        val minute = 60_000L
+        val hour = 3_600_000L
+        val day = 86_400_000L
+        assertEquals("just now", Formats.relativeTime(now + minute, now))
         assertEquals("just now", Formats.relativeTime(now - 30_000, now))
         assertEquals("1m ago", Formats.relativeTime(now - 90_000, now))
-        assertEquals("59m ago", Formats.relativeTime(now - 59 * 60_000, now))
-        assertEquals("3h ago", Formats.relativeTime(now - 3 * 3_600_000, now))
-        assertEquals("2d ago", Formats.relativeTime(now - 2 * 86_400_000, now))
-        assertEquals("1w ago", Formats.relativeTime(now - 10 * 86_400_000, now))
-        assertEquals("1mo ago", Formats.relativeTime(now - 40 * 86_400_000, now))
-        assertEquals("1y ago", Formats.relativeTime(now - 400 * 86_400_000, now))
+        assertEquals("59m ago", Formats.relativeTime(now - 59 * minute, now))
+        assertEquals("3h ago", Formats.relativeTime(now - 3 * hour, now))
+        assertEquals("2d ago", Formats.relativeTime(now - 2 * day, now))
+        assertEquals("1w ago", Formats.relativeTime(now - 10 * day, now))
+        assertEquals("1mo ago", Formats.relativeTime(now - 40 * day, now))
+        assertEquals("1y ago", Formats.relativeTime(now - 400 * day, now))
     }
 
     @Test
