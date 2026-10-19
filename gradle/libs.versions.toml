@@ -1,13 +1,17 @@
 [versions]
 # ---------------------------------------------------------------------------
-# This block is deliberately locked to a mutually compatible triple:
-#   AGP 8.2.2  <->  Gradle 8.5  <->  Kotlin 1.9.22  <->  Compose Compiler 1.5.4
-# Bumping Kotlin without bumping the Compose compiler (or vice versa) is the
-# single most common cause of a red CI build, so change them together.
+# Locked to a mutually compatible set:
+#   AGP 8.2.2  <->  Gradle 8.5  <->  Kotlin 1.9.22  <->  Compose Compiler 1.5.8
+#
+# The Compose compiler checks the Kotlin version it is running under and *fails
+# the build* on a mismatch, so these two must move together. Each compiler
+# release supports exactly one Kotlin release: 1.5.4 -> 1.9.20, 1.5.6 -> 1.9.21,
+# 1.5.8/1.5.9 -> 1.9.22, 1.5.10 -> 1.9.23. The map lives at
+# https://developer.android.com/jetpack/androidx/releases/compose-kotlin
 # ---------------------------------------------------------------------------
 agp = "8.2.2"
 kotlin = "1.9.22"
-composeCompiler = "1.5.4"
+composeCompiler = "1.5.8"
 composeBom = "2024.02.00"
 
 coreKtx = "1.12.0"
