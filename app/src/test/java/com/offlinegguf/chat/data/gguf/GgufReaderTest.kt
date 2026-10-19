@@ -22,7 +22,7 @@ class GgufReaderTest {
     private class Writer(private val version: Int = 3) {
         private val out = java.io.ByteArrayOutputStream()
 
-        val size: Int get() = out.size
+        val size: Int get() = out.size()
 
         fun u8(value: Int) = apply { out.write(value and 0xFF) }
 
@@ -79,10 +79,10 @@ class GgufReaderTest {
 
         companion object {
             val MAGIC = byteArrayOf('G'.code.toByte(), 'G'.code.toByte(), 'U'.code.toByte(), 'F'.code.toByte())
-            const val TYPE_UINT32 = 4
-            const val TYPE_BOOL = 7
-            const val TYPE_STRING = 8
-            const val TYPE_ARRAY = 9
+            const val TYPE_UINT32 = 4L
+            const val TYPE_BOOL = 7L
+            const val TYPE_STRING = 8L
+            const val TYPE_ARRAY = 9L
         }
     }
 
