@@ -1,7 +1,11 @@
 package com.offlinegguf.chat.ui.theme
 
+import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 
 /**
  * Every transition in the app comes from this one object.
@@ -44,6 +48,25 @@ class MotionSpec(
 
     /** Streaming caret: a slow blink reads calmer than a fast one. 0 means "do not blink". */
     val caretBlink: Int get() = if (reduced) 0 else 760
+
+    /**
+     * Springs for the *playful* layer: tab icons, chips, like hearts. Tweens
+     * (above) still drive anything the user is waiting on; springs only decorate
+     * state changes that have already happened, so a bouncy settle never delays
+     * feedback. Under Reduce motion both collapse to [snap].
+     */
+    val springBouncy: AnimationSpec<Float>
+        get() = if (reduced) snap() else spring(
+            dampingRatio = 0.55f,
+            stiffness = Spring.StiffnessMediumLow,
+        )
+
+    /** Settles without overshoot — indicator pills, gauges, progress. */
+    val springSmooth: AnimationSpec<Float>
+        get() = if (reduced) snap() else spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium,
+        )
 
     companion object {
         /** The spec to install for a given "Reduce motion" preference. */

@@ -1,20 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Distinctive offline-chat mark: a paper speech bubble with a small reasoning spark. -->
+<!--
+  The 1.4 mark: an ink speech bubble on paper, filled with the three
+  streaming "token lines" of an answer in progress. The third line stops
+  short and ends in a spark — the model is mid-sentence, on your phone.
+  All geometry stays inside the adaptive-icon safe circle (Ø72 at centre).
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:pathData="M30 22 H78 C84.627 22 90 27.373 90 34 V59 C90 65.627 84.627 71 78 71 H58 L44 83 V71 H30 C23.373 71 18 65.627 18 59 V34 C18 27.373 23.373 22 30 22 Z"
-        android:fillColor="#FFF6F6F7" />
-    <path
-        android:pathData="M54 31 L59.2 41.8 L70 47 L59.2 52.2 L54 63 L48.8 52.2 L38 47 L48.8 41.8 Z"
+        android:pathData="M40 28 H68 C75.18 28 81 33.82 81 41 V59 C81 66.18 75.18 72 68 72 H54 L41 83 V72 H40 C32.82 72 27 66.18 27 59 V41 C27 33.82 32.82 28 40 28 Z"
         android:fillColor="#FF0B0B0C" />
     <path
-        android:pathData="M31 47 H36 M72 47 H77 M54 31 V27 M54 67 V63"
-        android:strokeColor="#FF0B0B0C"
-        android:strokeWidth="3"
-        android:strokeLineCap="round" />
-    <path android:pathData="M30 54 H40 V58 H30 Z M68 54 H78 V58 H68 Z" android:fillColor="#FF777780" />
+        android:pathData="M40 39 H61 A3 3 0 0 1 61 45 H40 A3 3 0 0 1 40 39 Z"
+        android:fillColor="#FFF6F6F7" />
+    <path
+        android:pathData="M40 49 H67 A3 3 0 0 1 67 55 H40 A3 3 0 0 1 40 49 Z"
+        android:fillColor="#FFF6F6F7" />
+    <path
+        android:pathData="M40 59 H49 A3 3 0 0 1 49 65 H40 A3 3 0 0 1 40 59 Z"
+        android:fillColor="#FF777780" />
+    <path
+        android:pathData="M63 55 L65.1 59.9 L70 62 L65.1 64.1 L63 69 L60.9 64.1 L56 62 L60.9 59.9 Z"
+        android:fillColor="#FFF6F6F7" />
 </vector>

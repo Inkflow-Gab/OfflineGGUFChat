@@ -58,6 +58,8 @@ data class ChatUiState(
     /** Last answer that hit its per-pass token cap and can be continued. */
     val continuableMessageId: Long? = null,
     val model: LocalModelEntity? = null,
+    /** When set, generation goes to this cloud model instead of the local engine. */
+    val cloudTarget: com.offlinegguf.chat.data.cloud.CloudTarget? = null,
     val engineAvailable: Boolean = false,
     val engineNotice: String? = null,
     val engineVersion: String = "",
@@ -77,7 +79,11 @@ data class ChatUiState(
     val editingMessageId: Long? = null,
 ) {
     /** Shown instead of the transcript when there is nothing to talk to yet. */
-    val showEngineOnboarding: Boolean get() = !engineAvailable || model == null
+    val showEngineOnboarding: Boolean
+        get() = cloudTarget == null && (!engineAvailable || model == null)
+
+    /** True when a send can actually run somewhere: local engine or cloud. */
+    val canGenerate: Boolean get() = cloudTarget != null || (engineAvailable && model != null)
 
     val title: String get() = conversation?.title?.takeIf { it.isNotBlank() } ?: "New chat"
 }
@@ -136,10 +142,10 @@ class ChatViewModel(
         }
         viewModelScope.launch {
             val settings = container.settings.settings.first()
-            _state.update { it.copy(settings = settings) }
+            _state.update { it.copy(settings = settings, cloudTarget = settings.cloudTarget()) }
             viewModelScope.launch {
                 container.settings.settings.collect { latest ->
-                    _state.update { it.copy(settings = latest) }
+                    _state.update { it.copy(settings = latest, cloudTarget = latest.cloudTarget()) }
                 }
             }
 
@@ -430,14 +436,19 @@ class ChatViewModel(
             return
         }
         when {
-            !current.engineAvailable -> _state.update {
-                it.copy(error = it.engineNotice ?: "This build has no inference engine")
-            }
-            current.model == null -> _state.update { it.copy(error = "Pick a model first") }
-            else -> {
+            current.canGenerate -> {
                 val attachments = current.attachments
                 _state.update { it.copy(input = "", attachments = emptyList()) }
                 startGeneration(userText = text, attachments = attachments)
+            }
+            !current.engineAvailable -> _state.update {
+                it.copy(
+                    error = (it.engineNotice ?: "This build has no inference engine") +
+                        " — or pick a free cloud model in the Cloud tab.",
+                )
+            }
+            else -> _state.update {
+                it.copy(error = "Pick a model first — a local GGUF, or a free one in the Cloud tab.")
             }
         }
     }
@@ -450,7 +461,7 @@ class ChatViewModel(
         _state.update { it.copy(input = "", editingMessageId = null) }
         viewModelScope.launch {
             val removed = chat.deleteFrom(messageId)
-            if (removed > 0) {
+            if (removed > 0 && _state.value.cloudTarget == null) {
                 engine.rewind((lastPromptTokens - lastAnswerTokens).coerceAtLeast(0))
                 _state.update { it.copy(contextUsed = engine.contextUsed()) }
             }
@@ -462,7 +473,9 @@ class ChatViewModel(
         if (_state.value.generating) return
         viewModelScope.launch {
             val window = chat.prepareRegenerate(_state.value.conversationId)
-            engine.rewind((lastPromptTokens - lastAnswerTokens).coerceAtLeast(0))
+            if (_state.value.cloudTarget == null) {
+                engine.rewind((lastPromptTokens - lastAnswerTokens).coerceAtLeast(0))
+            }
             startGeneration(userText = null, attachments = emptyList(), transcript = window.transcript)
         }
     }
@@ -475,7 +488,7 @@ class ChatViewModel(
      */
     fun continueMessage(messageId: Long) {
         val current = _state.value
-        if (current.generating || current.continuableMessageId != messageId || current.model == null) return
+        if (current.generating || current.continuableMessageId != messageId || !current.canGenerate) return
         viewModelScope.launch {
             val previous = chat.message(messageId) ?: return@launch
             if (previous.role != Roles.ASSISTANT || previous.content.isBlank()) return@launch
@@ -515,7 +528,12 @@ class ChatViewModel(
         generationJob = viewModelScope.launch {
             val snapshot = _state.value
             val conversationId = snapshot.conversationId
-            val model = snapshot.model ?: return@launch
+            // Exactly one of these drives the generation: a picked cloud model
+            // wins over a resident GGUF (the top bar says which, and the Cloud
+            // tab is where the choice is undone).
+            val cloud = snapshot.cloudTarget
+            val model = snapshot.model
+            if (cloud == null && model == null) return@launch
             val skill = snapshot.skill
 
             val attachmentText = attachments
@@ -540,11 +558,20 @@ class ChatViewModel(
                 .map { ChatTurn(it.role, it.content) }
 
             val settings = snapshot.settings
-            val sampling = samplingFor(model, skill, settings)
+            val sampling = if (cloud != null) {
+                samplingForCloud(skill, settings)
+            } else {
+                samplingFor(model!!, skill, settings)
+            }
             val system = systemPromptFor(skill)
-            val promptContext = snapshot.contextSize.takeIf { it > 0 }
-                ?: model.nCtx.takeIf { it > 0 }
-                ?: container.deviceProfile.suggestedContext
+            val promptContext = when {
+                // Cloud models advertise huge contexts; cap what we re-send so a
+                // long chat cannot balloon the request (and the bill) forever.
+                cloud != null -> cloud.contextLength.takeIf { it > 0 }?.coerceAtMost(65_536) ?: 32_768
+                else -> snapshot.contextSize.takeIf { it > 0 }
+                    ?: model?.nCtx?.takeIf { it > 0 }
+                    ?: container.deviceProfile.suggestedContext
+            }
             val window = PromptWindow.fit(system, turns, promptContext, sampling.maxTokens)
             val prompt = PromptFormatter.render(
                 style = snapshot.templateStyle,
@@ -563,7 +590,7 @@ class ChatViewModel(
 
             val assistantId = existingMessageId ?: chat.startAssistant(
                 conversationId = conversationId,
-                modelName = model.displayName,
+                modelName = cloud?.label ?: model?.displayName ?: "model",
                 skillId = skill?.slug,
             )
             if (existingMessageId != null) chat.resumeAssistant(existingMessageId)
@@ -600,7 +627,24 @@ class ChatViewModel(
             var failure: String? = null
             var lastPersistNanos = System.nanoTime()
 
-            engine.stream(prompt, sampling).collect { event ->
+            // Both engines speak EngineEvent, so everything below — coalescing,
+            // thinking split, persistence, stats — is shared verbatim.
+            val events: kotlinx.coroutines.flow.Flow<EngineEvent> = if (cloud != null) {
+                val apiKey = container.settings.cloudApiKeys.first()[cloud.providerId].orEmpty()
+                container.cloudEngine.stream(
+                    provider = cloud.provider,
+                    customBaseUrl = settings.cloudCustomBaseUrl,
+                    apiKey = apiKey,
+                    modelId = cloud.modelId,
+                    system = system,
+                    turns = window.turns,
+                    sampling = sampling,
+                )
+            } else {
+                engine.stream(prompt, sampling)
+            }
+
+            events.collect { event ->
                 when (event) {
                     is EngineEvent.Token -> {
                         val out = thinking.offer(event.text)
@@ -743,6 +787,34 @@ class ChatViewModel(
             ChatMode.BALANCED, ChatMode.CHAT -> params
         }
         return if (tuned.grammar != null) tuned.forGrammar() else tuned
+    }
+
+    /**
+     * Cloud sampling: the global defaults with skill overrides and the same
+     * chat-mode tuning as local generation. Per-GGUF knobs (KV type, GBNF
+     * grammar, repeat penalty) do not exist in the OpenAI dialect and are
+     * simply not sent.
+     */
+    private fun samplingForCloud(
+        skill: SkillEntity?,
+        settings: AppSettings,
+    ): SamplingParams {
+        val params = SamplingParams(
+            maxTokens = skill?.maxTokens?.takeIf { it > 0 } ?: settings.maxTokens,
+            temperature = skill?.temperature ?: settings.temperature,
+            topP = skill?.topP ?: settings.topP,
+            topK = settings.topK,
+            minP = settings.minP,
+            repeatPenalty = settings.repeatPenalty,
+        )
+        return if (skill != null) params else when (settings.chatMode) {
+            ChatMode.CAREFUL, ChatMode.CODING -> params.copy(temperature = minOf(params.temperature, 0.3f))
+            ChatMode.FAST -> params.copy(
+                maxTokens = minOf(params.maxTokens, 320),
+                temperature = minOf(params.temperature, 0.6f),
+            )
+            ChatMode.BALANCED, ChatMode.CHAT -> params
+        }
     }
 
     fun stop() {

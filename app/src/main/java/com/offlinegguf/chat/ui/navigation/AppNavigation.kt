@@ -1,11 +1,17 @@
 package com.offlinegguf.chat.ui.navigation
 
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -17,7 +23,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -29,6 +37,7 @@ import com.offlinegguf.chat.AppContainer
 import com.offlinegguf.chat.R
 import com.offlinegguf.chat.data.settings.AppSettings
 import com.offlinegguf.chat.ui.screens.ChatScreen
+import com.offlinegguf.chat.ui.screens.CloudScreen
 import com.offlinegguf.chat.ui.screens.DiscoverScreen
 import com.offlinegguf.chat.ui.screens.HistoryScreen
 import com.offlinegguf.chat.ui.screens.ModelDetailScreen
@@ -42,6 +51,7 @@ enum class Destination(val route: String, val label: String, val icon: Int) {
     CHAT("chat", "Chat", R.drawable.ic_chat),
     MODELS("models", "Models", R.drawable.ic_cube),
     DISCOVER("discover", "Discover", R.drawable.ic_target),
+    CLOUD("cloud", "Cloud", R.drawable.ic_cloud),
 }
 
 object Routes {
@@ -50,6 +60,7 @@ object Routes {
     const val MODELS = "models"
     const val MODEL_DETAIL = "model/{path}"
     const val DISCOVER = "discover"
+    const val CLOUD = "cloud"
     const val SKILLS = "skills"
     const val SETTINGS = "settings"
     const val HISTORY = "history"
@@ -62,12 +73,29 @@ object Routes {
     fun decodeModelPath(encoded: String?) = encoded?.let { Uri.decode(it) }.orEmpty()
 }
 
+/** Routes that own a bottom-bar tab; moving between them cross-fades. */
+private val TabRoutes = setOf(
+    Routes.CHAT,
+    Routes.CHAT_WITH_ID,
+    Routes.MODELS,
+    Routes.DISCOVER,
+    Routes.CLOUD,
+)
+
 /**
  * Navigation host.
  *
- * Transitions are short and directional: pushing a detail screen slides in from
- * the right, going back slides out to the right, and switching bottom-bar tab
- * cross-fades. Nothing travels far enough to need a spring.
+ * Four tabs — Chat, Models, Discover, Cloud — because those are the four
+ * questions the app answers ("talk", "what's on my phone", "what should I
+ * get", "what can I use online"). Everything else (history, skills, settings,
+ * model detail) is one tap deeper.
+ *
+ * Motion is directional and honest about hierarchy: switching tabs is a
+ * cross-fade with a whisper of scale (siblings, no travel), pushing a detail
+ * screen slides in from the right (deeper), going back slides out to the
+ * right. Tab icons spring to a slightly larger size when selected — the one
+ * playful animation in the chrome, and it settles behind the action rather
+ * than in front of it. All of it collapses to clean cuts under Reduce motion.
  */
 @Composable
 fun AppNavigation(
@@ -84,18 +112,19 @@ fun AppNavigation(
     val barDuration = motion.standard
     val pushDuration = motion.slow
 
-    val showBottomBar = currentRoute in setOf(
-        Routes.CHAT,
-        Routes.CHAT_WITH_ID,
-        Routes.MODELS,
-        Routes.DISCOVER,
-    )
+    val showBottomBar = currentRoute in TabRoutes
 
     Scaffold(
         modifier = modifier,
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            if (showBottomBar) {
+            AnimatedVisibility(
+                visible = showBottomBar,
+                enter = slideInVertically(tween(barDuration, easing = motion.easeEmphasized)) { it } +
+                    fadeIn(tween(barDuration)),
+                exit = slideOutVertically(tween(motion.fast, easing = motion.easeAccelerate)) { it } +
+                    fadeOut(tween(motion.fast)),
+            ) {
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surface,
                     tonalElevation = 0.dp,
@@ -107,17 +136,27 @@ fun AppNavigation(
                             selected = selected,
                             onClick = { navController.navigateToTab(destination.route) },
                             icon = {
+                                val iconScale by animateFloatAsState(
+                                    targetValue = if (selected) 1.18f else 1f,
+                                    animationSpec = motion.springBouncy,
+                                    label = "tab-${destination.route}",
+                                )
                                 Icon(
                                     painter = painterResource(destination.icon),
                                     contentDescription = destination.label,
                                     tint = if (selected) MaterialTheme.colorScheme.onSurface
                                     else MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.graphicsLayer {
+                                        scaleX = iconScale
+                                        scaleY = iconScale
+                                    },
                                 )
                             },
                             label = {
                                 Text(
                                     destination.label,
                                     style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                                     color = if (selected) MaterialTheme.colorScheme.onSurface
                                     else MaterialTheme.colorScheme.tertiary,
                                 )
@@ -137,16 +176,24 @@ fun AppNavigation(
             startDestination = Routes.CHAT,
             modifier = Modifier.padding(innerPadding),
             enterTransition = {
-                fadeIn(tween(barDuration)) +
-                    slideInHorizontally(tween(pushDuration, easing = motion.easeEmphasized)) {
-                        width -> width / 24
-                    }
+                if (initialState.destination.route in TabRoutes && targetState.destination.route in TabRoutes) {
+                    fadeIn(tween(barDuration)) + scaleIn(tween(barDuration), initialScale = 0.985f)
+                } else {
+                    fadeIn(tween(barDuration)) +
+                        slideInHorizontally(tween(pushDuration, easing = motion.easeEmphasized)) {
+                            width -> width / 24
+                        }
+                }
             },
             exitTransition = {
-                fadeOut(tween(barDuration)) +
-                    slideOutHorizontally(tween(pushDuration, easing = motion.easeAccelerate)) {
-                        width -> -width / 24
-                    }
+                if (initialState.destination.route in TabRoutes && targetState.destination.route in TabRoutes) {
+                    fadeOut(tween(motion.fast)) + scaleOut(tween(motion.fast), targetScale = 0.985f)
+                } else {
+                    fadeOut(tween(barDuration)) +
+                        slideOutHorizontally(tween(pushDuration, easing = motion.easeAccelerate)) {
+                            width -> -width / 24
+                        }
+                }
             },
             popEnterTransition = {
                 fadeIn(tween(barDuration)) +
@@ -170,6 +217,7 @@ fun AppNavigation(
                     onOpenHistory = { navController.navigate(Routes.HISTORY) },
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     onOpenSkills = { navController.navigate(Routes.SKILLS) },
+                    onOpenCloud = { navController.navigateToTab(Routes.CLOUD) },
                 )
             }
 
@@ -183,6 +231,7 @@ fun AppNavigation(
                     onOpenHistory = { navController.navigate(Routes.HISTORY) },
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     onOpenSkills = { navController.navigate(Routes.SKILLS) },
+                    onOpenCloud = { navController.navigateToTab(Routes.CLOUD) },
                 )
             }
 
@@ -210,6 +259,13 @@ fun AppNavigation(
                 DiscoverScreen(
                     container = container,
                     onOpenModels = { navController.navigateToTab(Routes.MODELS) },
+                )
+            }
+
+            composable(Routes.CLOUD) {
+                CloudScreen(
+                    container = container,
+                    onOpenChat = { navController.navigateToTab(Routes.CHAT) },
                 )
             }
 

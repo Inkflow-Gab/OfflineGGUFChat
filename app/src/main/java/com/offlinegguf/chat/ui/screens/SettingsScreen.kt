@@ -85,6 +85,7 @@ fun SettingsScreen(
 
     var showSystemPrompt by remember { mutableStateOf(false) }
     var confirmArchived by remember { mutableStateOf(false) }
+    var showAgeGate by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         InkTopBar(title = "Settings", subtitle = state.appVersion, onBack = onBack)
@@ -137,6 +138,33 @@ fun SettingsScreen(
                         Spacer(Modifier.height(spacing.sm))
                         KeyValueRow("status", "metadata only")
                     }
+                }
+            }
+
+            // ----------------------------------------------------------- cloud
+            item(key = "cloud") {
+                Section(title = "Cloud (optional)") {
+                    ToggleRow(
+                        title = "Cloud chat",
+                        subtitle = "OpenRouter / Groq / NVIDIA / your own server. Off by default; " +
+                            "uses your own API key. Manage models in the Cloud tab.",
+                        checked = state.settings.cloudEnabled,
+                        onCheckedChange = viewModel::setCloudEnabled,
+                    )
+                    val target = state.settings.cloudTarget()
+                    if (target != null) {
+                        KeyValueRow("active model", target.label)
+                        Spacer(Modifier.height(spacing.sm))
+                        InkButton(
+                            label = "Use on-device model instead",
+                            onClick = { viewModel.clearCloudTarget() },
+                            filled = false,
+                            icon = R.drawable.ic_phone,
+                        )
+                    } else {
+                        KeyValueRow("active model", "on-device GGUF")
+                    }
+                    KeyValueRow("network", if (state.settings.cloudEnabled) "cloud tab only" else "never")
                 }
             }
 
@@ -346,6 +374,31 @@ fun SettingsScreen(
                 }
             }
 
+            // -------------------------------------------------------- maturity
+            item(key = "maturity") {
+                Section(title = "Maturity") {
+                    ToggleRow(
+                        title = "Adult content (18+)",
+                        subtitle = "Unlocks refusal-free and roleplay models in Discover. " +
+                            "Their output is unfiltered, including explicit adult material.",
+                        checked = state.settings.maturityConfirmed,
+                        onCheckedChange = { value ->
+                            if (value) showAgeGate = true else viewModel.setMaturityConfirmed(false)
+                        },
+                    )
+                    Text(
+                        text = if (state.settings.maturityConfirmed) {
+                            "Confirmed on this device. Turning this off locks the shelf again and " +
+                                "clears the refusal-free filter."
+                        } else {
+                            "Off. Turning this on asks you to confirm you are an adult first."
+                        },
+                        style = MetaKeyText,
+                        color = colors.tertiary,
+                    )
+                }
+            }
+
             // ----------------------------------------------------------- data
             item(key = "data") {
                 Section(title = "Data & storage") {
@@ -383,15 +436,32 @@ fun SettingsScreen(
 
             item(key = "about") {
                 Section(title = "About") {
+                    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
                     KeyValueRow("app", "Offline GGUF Chat")
                     KeyValueRow("version", "${state.appVersion} (${BuildConfig.VERSION_CODE})")
-                    KeyValueRow("permissions", "WAKE_LOCK only — no INTERNET")
+                    KeyValueRow(
+                        "permissions",
+                        "WAKE_LOCK · INTERNET only when you turn Cloud on",
+                    )
                     Spacer(Modifier.height(spacing.sm))
                     Text(
                         text = "GGUF headers are parsed twice, once in Kotlin and once in C++, and the two " +
                             "implementations are checked against the same golden fixtures in CI.",
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(spacing.sm))
+                    InkButton(
+                        label = "Check for updates",
+                        icon = R.drawable.ic_external,
+                        filled = false,
+                        onClick = {
+                            // Every release is signed with the same key, so the new
+                            // APK installs straight over this one — chats and models stay.
+                            runCatching {
+                                uriHandler.openUri("https://github.com/Inkflow-Gab/OfflineGGUFChat/releases/latest")
+                            }
+                        },
                     )
                 }
             }
@@ -408,6 +478,20 @@ fun SettingsScreen(
                 confirmArchived = false
             },
             onDismiss = { confirmArchived = false },
+        )
+    }
+
+    if (showAgeGate) {
+        ConfirmDialog(
+            title = "Adults only · 18+",
+            body = "Refusal-free models are fine-tunes with the safety filter removed. They can " +
+                "produce explicit adult content, strong language and other material unsuitable " +
+                "for minors — with no warnings and no refusals.\n\n" +
+                "Confirm that you are at least 18 years old (or the age of majority where you live).",
+            confirmLabel = "I am 18 or older",
+            dismissLabel = "Not now",
+            onConfirm = { viewModel.setMaturityConfirmed(true) },
+            onDismiss = { showAgeGate = false },
         )
     }
 

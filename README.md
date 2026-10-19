@@ -1,8 +1,10 @@
 # Offline GGUF Chat
 
 A quiet, black-and-white Android app for talking to GGUF language models that live
-on your phone. No account, no API key, no network permission at all — the app
-cannot phone home because it was never given the ability to.
+on your phone. No account, no API key, no phoning home: on-device inference is the
+default and the identity of the app. Since 1.4 there is also an *optional* Cloud
+tab — bring your own free key (OpenRouter, Groq, NVIDIA) — which is off until you
+turn it on, and the only thing in the app that can open a socket.
 
 ```
 ┌──────────────────────────────────────┐
@@ -57,7 +59,8 @@ holds code, diffs and gauges does not need a fourth visual channel. See
   progressive text without redrawing or writing to Room for every token.
 - A quick chat-mode menu: Balanced, Fast, Chat, Coding, and Deep thinking. Modes
   adjust the prompt and relevant sampling defaults; the model menu routes to the
-  full 18-model catalogue, including five refusal-free fine-tunes.
+  full 38-model catalogue, including thirteen refusal-free fine-tunes behind an
+  18+ confirmation.
 - Reasoning models get their scratch work split into a separate collapsible
   *thinking* channel (`<think>`, `<thinking>`, `<reasoning>` and friends),
   incrementally, with marker prefixes held back so a tag split across two token
@@ -85,13 +88,35 @@ holds code, diffs and gauges does not need a fourth visual channel. See
 
 **Discovery**
 
-- A curated offline catalogue of 18 models scored against *your* device: RAM,
+- A curated offline catalogue of 38 models scored against *your* device: RAM,
   cores, free storage and API level decide what is recommended, what is merely
-  possible, and what will not fit. Preferences cover use-case style, a
-  speed-vs-quality bias, a download ceiling, and an **uncensored** switch that
-  adds the five alignment-removed / abliterated entries.
-- The app has no internet permission, so Discover cannot download anything. It
-  ranks locally and hands you a link to huggingface.co to open in your browser.
+  possible, and what will not fit. Qwen3, Gemma 3, DeepSeek R1 distills and
+  friends at every size from 229 MB up; preferences cover use-case style
+  (including Reasoning and Roleplay), a speed-vs-quality bias and a download
+  ceiling. A **"Start here"** card names the single best first download for
+  your phone.
+- Refusal-free / abliterated entries now exist at 1B–8B (not just 7B-class)
+  and sit behind a one-time **18+ confirmation**; unconfirmed, those models
+  are not even scored.
+- Discover never downloads anything itself. It ranks locally and hands you a
+  link to huggingface.co to open in your browser.
+
+**Cloud (opt-in, off by default)**
+
+- OpenRouter, Groq, NVIDIA, or any OpenAI-compatible server (llama.cpp /
+  LM Studio / Ollama on your LAN). Paste a free API key, browse the live
+  model list with **FREE badges**, a free-only filter, prices and context
+  sizes, then tap a model to chat with it. Streaming, the thinking channel,
+  stop/continue/regenerate and the transcript all behave exactly like a
+  local model. Keys live in app-private storage, outside the settings
+  snapshot, and are sent only to the provider you picked.
+
+**Navigation**
+
+- Four animated tabs — Chat, Models, Discover, Cloud — with springy icons,
+  a bottom bar that slides away on detail screens, cross-fades between
+  tabs and directional slides when you go deeper. Everything collapses to
+  clean cuts under *Reduce motion*.
 
 ## Getting the app
 
@@ -101,8 +126,13 @@ every `v*` tag, with a `checksums.txt` alongside:
 
 | Asset | Signed with | Use |
 | --- | --- | --- |
-| `OfflineGGUFChat-<version>-release.apk` | release key when the repo secrets exist, otherwise the CI debug key | daily driver |
+| `OfflineGGUFChat-<version>-release.apk` | **the one release keystore** (see [`docs/SIGNING.md`](docs/SIGNING.md)) | daily driver |
 | `OfflineGGUFChat-<version>-debug.apk` | debug key | poking at logs |
+
+Every release is signed with the same key, so a new APK installs straight
+over the old one — chats, models and settings stay put. Signing is a
+one-time setup: `./scripts/setup-keystore.sh`, paste four GitHub secrets,
+done forever.
 
 Both are `arm64-v8a` only, which is what phones from the last several years run.
 
@@ -151,9 +181,10 @@ app user. Rooted phones use the same safe app sandbox; root does not improve CPU
 inference or remove RAM/storage limits. Pick a model that the device-aware fit
 adviser marks usable, and leave enough free storage for the import copy.
 
-The app deliberately has no `INTERNET` permission. Download model weights in a
-browser or another trusted source, verify their licence, then import the GGUF;
-model files are not bundled in the APK.
+On-device inference never touches the network; the `INTERNET` permission
+exists only for the opt-in Cloud tab and stays unused while cloud is off.
+Download model weights in a browser or another trusted source, verify their
+licence, then import the GGUF; model files are not bundled in the APK.
 
 ## Repository layout
 
@@ -162,6 +193,7 @@ app/src/main/java/com/offlinegguf/chat/
   util/         formatting, streaming UTF-8 decoder, diff engine, markdown blocks
   data/gguf/    GGUF types + the sequential header reader
   data/catalog/ bundled model catalogue and the device-aware advisor
+  data/cloud/   opt-in OpenAI-compatible providers (OpenRouter/Groq/NVIDIA/custom)
   data/local/   Room entities, DAOs, database
   data/settings/DataStore-backed preferences
   data/repository/  model, chat and skill repositories
@@ -171,7 +203,7 @@ app/src/main/java/com/offlinegguf/chat/
   inference/    JNI bindings, stream coalescer, thinking parser, prompt templates
   ui/theme/     ink palette, type scale, motion spec, spacing grid
   ui/components/code block, markdown, message row, gauges, input bar
-  ui/screens/   chat, models, model detail, discover, skills, settings, history
+  ui/screens/   chat, models, model detail, discover, cloud, skills, settings, history
   viewmodel/    one per screen
 app/src/test/   JVM unit tests (no emulator, no mocking framework)
 app/cpp/        GGUF probe, UTF-8 framer, JNI layer, two engine bridges
@@ -179,9 +211,10 @@ scripts/        sync-llama.sh, check-native.sh
 .github/workflows/android-build.yml
 ```
 
-55 Kotlin files (~14 100 lines), 10 C++ files (~2 600 lines), 11 test files with
-167 tests, 46 hand-written stroke icons plus two launcher layers, and no
-third-party icon or font assets.
+~60 Kotlin files (~16 000 lines), 10 C++ files (~2 600 lines), 17 test files,
+51 hand-written stroke icons plus the launcher mark (colour + themed
+monochrome), and no third-party icon or font assets. Where it goes next:
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Continuous integration
 
@@ -193,8 +226,10 @@ requests:
 2. **unit-tests** — `./gradlew testDebugUnitTest`, with the HTML report uploaded
    as an artifact.
 3. **apk** — needs both of the above; fetches the pinned llama.cpp revision,
-   assembles engine-enabled debug *and* release APKs for arm64, verifies that
-   `libllama_jni.so` contains the real engine/JNI entry point, and uploads them.
+   assembles engine-enabled debug *and* release APKs for arm64, decodes the
+   one release keystore from the `KEYSTORE_B64` secret, verifies that
+   `libllama_jni.so` contains the real engine/JNI entry point, prints the
+   signing-certificate fingerprint into the log, and uploads them.
 4. **release** — on `v*` tags only; renames the APKs to
    `OfflineGGUFChat-<version>-{debug,release}.apk`, writes `checksums.txt`
    (sha256) and publishes a GitHub Release.

@@ -137,11 +137,28 @@ jobs:
         shell: bash
         run: ./gradlew assembleDebug --stacktrace -Pofflinegguf.llama=true -Pofflinegguf.abis=arm64-v8a 2>&1 | tee -a build.log
 
-      - name: Build release APK
-        # Without keystore secrets the release APK is signed with the debug key,
-        # so it still installs. Add the four secrets below to publish a signed one.
+      # THE one release keystore, created once by scripts/setup-keystore.sh and
+      # stored base64-encoded as the KEYSTORE_B64 secret. Every release signed
+      # with it installs as an update over the previous one — chats, models and
+      # settings survive. Never rotate it; see docs/SIGNING.md.
+      - name: Decode the release keystore
         env:
-          KEYSTORE_FILE: ${{ secrets.KEYSTORE_FILE }}
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        shell: bash
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "Release keystore decoded — release APK will be update-signed."
+          else
+            echo "No KEYSTORE_B64 secret — release APK falls back to the debug key."
+            echo "Run scripts/setup-keystore.sh once to fix updates forever."
+          fi
+
+      - name: Build release APK
+        # Signed with the decoded keystore above when the secrets exist;
+        # otherwise signed with the debug key so the artifact still installs.
+        env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
@@ -171,6 +188,16 @@ jobs:
           cp app/build/outputs/apk/release/*.apk "dist/OfflineGGUFChat-${VERSION}-release.apk"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           ls -lh dist
+
+      # Prove, in every build log, exactly which certificate signed the release
+      # APK. Same SHA-256 across versions = updates install in place.
+      - name: Show the release signing certificate
+        shell: bash
+        run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          APKSIGNER="$(find "$SDK/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          "$APKSIGNER" verify --print-certs "dist/OfflineGGUFChat-${VERSION}-release.apk" \
+            | grep -E 'Signer #1 certificate (DN|SHA-256)' || true
 
       - name: Upload APKs
         uses: actions/upload-artifact@v7
@@ -224,15 +251,19 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           body: |
-            Offline GGUF Chat — local-only inference for Android.
+            Offline GGUF Chat — on-device GGUF inference for Android, with an
+            optional bring-your-own-key cloud mode (OpenRouter / Groq / NVIDIA).
 
             **Which APK?**
+            - `release` — the one to use day to day.
             - `debug` — installable anywhere, keeps logs, no minification.
-            - `release` — the one to use day to day. Signed with the repository
-              keystore when the secrets are configured, otherwise with the debug
-              key so the artifact still installs.
+
+            **Updating:** every release APK is signed with the same keystore, so
+            a new version installs straight over the old one — chats, models and
+            settings are kept. (Exception: if you are coming from an old
+            debug-signed build, uninstall once, then updates work forever.)
 
             Both APKs include the pinned llama.cpp CPU backend and are ready to
             load a compatible local GGUF model. No model weights are bundled;
             import one from Models → Import. No root access is needed. See
-            `docs/NATIVE.md` for local builds and troubleshooting.
+            `docs/NATIVE.md` for local builds and `docs/SIGNING.md` for signing.

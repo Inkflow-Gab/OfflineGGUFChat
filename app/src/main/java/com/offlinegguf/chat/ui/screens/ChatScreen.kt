@@ -89,6 +89,7 @@ fun ChatScreen(
     onOpenHistory: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenSkills: () -> Unit,
+    onOpenCloud: () -> Unit,
 ) {
     val viewModel: ChatViewModel = viewModel(
         key = "chat-${conversationId ?: 0}",
@@ -157,6 +158,7 @@ fun ChatScreen(
         InkTopBar(
             title = state.title,
             subtitle = when {
+                state.cloudTarget != null -> "☁ ${state.cloudTarget!!.label}"
                 state.loadingModel -> "Loading model…"
                 state.model != null -> {
                     val model = state.model!!
@@ -251,6 +253,33 @@ fun ChatScreen(
                             onClick = { menuOpen = false; onOpenModels() },
                         )
                         DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (state.cloudTarget != null) {
+                                        "Cloud · ${state.cloudTarget!!.displayName} (change)"
+                                    } else {
+                                        "Cloud models · many free"
+                                    },
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(painterResource(R.drawable.ic_cloud), null, Modifier.size(16.dp))
+                            },
+                            onClick = { menuOpen = false; onOpenCloud() },
+                        )
+                        if (state.cloudTarget != null) {
+                            DropdownMenuItem(
+                                text = { Text("Use on-device model instead") },
+                                leadingIcon = {
+                                    Icon(painterResource(R.drawable.ic_phone), null, Modifier.size(16.dp))
+                                },
+                                onClick = {
+                                    menuOpen = false
+                                    scope.launch { container.settings.setCloudTarget(null) }
+                                },
+                            )
+                        }
+                        DropdownMenuItem(
                             text = { Text("Skills") },
                             leadingIcon = {
                                 Icon(painterResource(R.drawable.ic_sparkle), null, Modifier.size(16.dp))
@@ -315,7 +344,7 @@ fun ChatScreen(
         )
 
         AnimatedVisibility(
-            visible = showGauge && state.model != null,
+            visible = showGauge && state.model != null && state.cloudTarget == null,
             enter = expandVertically(tween(motion.standard)) + fadeIn(tween(motion.standard)),
             exit = shrinkVertically(tween(motion.fast)) + fadeOut(tween(motion.fast)),
         ) {
@@ -346,6 +375,7 @@ fun ChatScreen(
                             loadingModel = state.loadingModel,
                             onOpenModels = onOpenModels,
                             onOpenSettings = onOpenSettings,
+                            onOpenCloud = onOpenCloud,
                         )
                     }
                 }
@@ -362,8 +392,13 @@ fun ChatScreen(
                                     ChatMode.CAREFUL -> "Let’s work through it carefully"
                                     ChatMode.BALANCED -> "A private chat, on your terms"
                                 },
-                                body = "Runs on this phone. No account, no upload, no network. " +
-                                    "Choose a starter or write your own prompt.",
+                                body = if (state.cloudTarget != null) {
+                                    "Talking to ${state.cloudTarget!!.label} over the network with your key. " +
+                                        "Choose a starter or write your own prompt."
+                                } else {
+                                    "Runs on this phone. No account, no upload, no network. " +
+                                        "Choose a starter or write your own prompt."
+                                },
                             )
                             Text(
                                 text = "QUICK START · ${settings.chatMode.label.uppercase()}",
@@ -564,6 +599,7 @@ private fun EngineOnboarding(
     loadingModel: Boolean,
     onOpenModels: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenCloud: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val spacing = OfflineGgufTheme.spacing
@@ -581,9 +617,11 @@ private fun EngineOnboarding(
 
         Text(
             text = if (engineAvailable) {
-                "The engine is here. Load a GGUF file and the conversation stays on this device."
+                "The engine is here. Load a GGUF file and the conversation stays on this device — " +
+                    "or skip the download and use a free cloud model with your own key."
             } else {
-                engineNotice ?: "This APK was built without llama.cpp."
+                (engineNotice ?: "This APK was built without llama.cpp.") +
+                    " You can still chat: pick a free cloud model in the Cloud tab."
             },
             style = MaterialTheme.typography.bodyMedium,
             color = colors.onSurfaceVariant,
@@ -597,6 +635,12 @@ private fun EngineOnboarding(
                 onClick = onOpenModels,
                 enabled = !loadingModel,
                 icon = R.drawable.ic_cube,
+            )
+            InkButton(
+                label = "Free cloud model",
+                onClick = onOpenCloud,
+                filled = false,
+                icon = R.drawable.ic_cloud,
             )
             InkButton(
                 label = "Settings",

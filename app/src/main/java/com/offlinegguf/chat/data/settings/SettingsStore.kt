@@ -62,12 +62,38 @@ data class AppSettings(
     val advisorPreferSpeed: Boolean = true,
     val advisorMaxDownloadGb: Int = 8,
 
+    // ---- maturity ----
+    /** The user has confirmed they are 18+. Gates refusal-free / mature models. */
+    val maturityConfirmed: Boolean = false,
+
+    // ---- cloud (opt-in; off by default, keys live outside this snapshot) ----
+    val cloudEnabled: Boolean = false,
+    val cloudProviderId: String = "openrouter",
+    val cloudModelId: String = "",
+    val cloudModelName: String = "",
+    val cloudContextLength: Int = 0,
+    val cloudFreeOnly: Boolean = true,
+    val cloudCustomBaseUrl: String = "",
+
     // ---- state ----
     val lastConversationId: Long = -1L,
     val lastModelPath: String? = null,
     val onboarded: Boolean = false,
 ) {
     fun style(): ModelStyle = ModelStyle.fromId(advisorStyle)
+
+    /** The cloud model chat should talk to, or null for on-device inference. */
+    fun cloudTarget(): com.offlinegguf.chat.data.cloud.CloudTarget? =
+        if (cloudEnabled && cloudModelId.isNotBlank()) {
+            com.offlinegguf.chat.data.cloud.CloudTarget(
+                providerId = cloudProviderId,
+                modelId = cloudModelId,
+                displayName = cloudModelName.ifBlank { cloudModelId },
+                contextLength = cloudContextLength,
+            )
+        } else {
+            null
+        }
 
     fun sampling(): SamplingParams = SamplingParams(
         maxTokens = maxTokens,
@@ -127,6 +153,16 @@ class SettingsStore(private val context: Context) {
         val ADVISOR_PREFER_SPEED = booleanPreferencesKey("advisor_prefer_speed")
         val ADVISOR_MAX_GB = intPreferencesKey("advisor_max_download_gb")
 
+        val MATURITY_CONFIRMED = booleanPreferencesKey("maturity_confirmed")
+
+        val CLOUD_ENABLED = booleanPreferencesKey("cloud_enabled")
+        val CLOUD_PROVIDER = stringPreferencesKey("cloud_provider_id")
+        val CLOUD_MODEL_ID = stringPreferencesKey("cloud_model_id")
+        val CLOUD_MODEL_NAME = stringPreferencesKey("cloud_model_name")
+        val CLOUD_CONTEXT = intPreferencesKey("cloud_context_length")
+        val CLOUD_FREE_ONLY = booleanPreferencesKey("cloud_free_only")
+        val CLOUD_CUSTOM_URL = stringPreferencesKey("cloud_custom_base_url")
+
         val LAST_CONVERSATION = intPreferencesKey("last_conversation_id")
         val LAST_MODEL_PATH = stringPreferencesKey("last_model_path")
         val ONBOARDED = booleanPreferencesKey("onboarded")
@@ -162,6 +198,14 @@ class SettingsStore(private val context: Context) {
                 advisorUncensored = prefs[Keys.ADVISOR_UNCENSORED] ?: false,
                 advisorPreferSpeed = prefs[Keys.ADVISOR_PREFER_SPEED] ?: true,
                 advisorMaxDownloadGb = prefs[Keys.ADVISOR_MAX_GB] ?: 8,
+                maturityConfirmed = prefs[Keys.MATURITY_CONFIRMED] ?: false,
+                cloudEnabled = prefs[Keys.CLOUD_ENABLED] ?: false,
+                cloudProviderId = prefs[Keys.CLOUD_PROVIDER] ?: "openrouter",
+                cloudModelId = prefs[Keys.CLOUD_MODEL_ID] ?: "",
+                cloudModelName = prefs[Keys.CLOUD_MODEL_NAME] ?: "",
+                cloudContextLength = prefs[Keys.CLOUD_CONTEXT] ?: 0,
+                cloudFreeOnly = prefs[Keys.CLOUD_FREE_ONLY] ?: true,
+                cloudCustomBaseUrl = prefs[Keys.CLOUD_CUSTOM_URL] ?: "",
                 lastConversationId = (prefs[Keys.LAST_CONVERSATION] ?: -1).toLong(),
                 lastModelPath = prefs[Keys.LAST_MODEL_PATH],
                 onboarded = prefs[Keys.ONBOARDED] ?: false,
@@ -207,6 +251,64 @@ class SettingsStore(private val context: Context) {
     }
 
     suspend fun setOnboarded(value: Boolean) = edit { it[Keys.ONBOARDED] = value }
+
+    suspend fun setMaturityConfirmed(value: Boolean) = edit {
+        it[Keys.MATURITY_CONFIRMED] = value
+        // Revoking the confirmation also clears the refusal-free preference, so
+        // the adult shelf cannot stay half-enabled behind a locked gate.
+        if (!value) it[Keys.ADVISOR_UNCENSORED] = false
+    }
+
+    suspend fun setCloudEnabled(value: Boolean) = edit { it[Keys.CLOUD_ENABLED] = value }
+
+    suspend fun setCloudProvider(providerId: String) = edit { it[Keys.CLOUD_PROVIDER] = providerId }
+
+    suspend fun setCloudTarget(target: com.offlinegguf.chat.data.cloud.CloudTarget?) = edit {
+        if (target == null) {
+            it.remove(Keys.CLOUD_MODEL_ID)
+            it.remove(Keys.CLOUD_MODEL_NAME)
+            it.remove(Keys.CLOUD_CONTEXT)
+        } else {
+            it[Keys.CLOUD_PROVIDER] = target.providerId
+            it[Keys.CLOUD_MODEL_ID] = target.modelId
+            it[Keys.CLOUD_MODEL_NAME] = target.displayName
+            it[Keys.CLOUD_CONTEXT] = target.contextLength
+        }
+    }
+
+    suspend fun setCloudFreeOnly(value: Boolean) = edit { it[Keys.CLOUD_FREE_ONLY] = value }
+
+    suspend fun setCloudCustomBaseUrl(value: String) = edit { it[Keys.CLOUD_CUSTOM_URL] = value.trim() }
+
+    /**
+     * API keys, one per provider id. They live in the same app-private DataStore
+     * file but deliberately *outside* [AppSettings]: the settings snapshot flows
+     * into every view model, and a secret should only be read at the two call
+     * sites that need it (the Cloud screen and a cloud generation).
+     */
+    private fun cloudKeyKey(providerId: String) = stringPreferencesKey("cloud_key_$providerId")
+
+    val cloudApiKeys: Flow<Map<String, String>> = context.settingsDataStore.data
+        .catch { cause ->
+            if (cause is IOException) emit(androidx.datastore.preferences.core.emptyPreferences())
+            else throw cause
+        }
+        .map { prefs ->
+            prefs.asMap().entries.mapNotNull { (key, value) ->
+                val name = key.name
+                if (name.startsWith("cloud_key_") && value is String && value.isNotBlank()) {
+                    name.removePrefix("cloud_key_") to value
+                } else {
+                    null
+                }
+            }.toMap()
+        }
+
+    suspend fun setCloudApiKey(providerId: String, apiKey: String) = edit { prefs ->
+        val trimmed = apiKey.trim()
+        if (trimmed.isBlank()) prefs.remove(cloudKeyKey(providerId))
+        else prefs[cloudKeyKey(providerId)] = trimmed
+    }
 
     suspend fun resetToDefaults() = edit { it.clear() }
 
