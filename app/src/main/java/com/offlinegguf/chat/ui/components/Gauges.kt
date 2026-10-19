@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -67,6 +68,46 @@ fun StreamingRule(active: Boolean, modifier: Modifier = Modifier) {
             color = colors.primary,
             trackColor = colors.surfaceContainerHigh,
         )
+    }
+}
+
+/** Three staggered dots signal local inference without implying a known ETA. */
+@Composable
+fun ThinkingPulse(
+    label: String? = null,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    val motion = OfflineGgufTheme.motion
+    val transition = if (motion.reduced) null else rememberInfiniteTransition()
+
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        if (label != null) {
+            Text(label, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+        }
+        repeat(3) { index ->
+            val alpha = if (transition != null) {
+                val animated by transition.animateFloat(
+                    initialValue = 0.25f,
+                    targetValue = 1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = 720, delayMillis = index * 150),
+                        repeatMode = RepeatMode.Reverse,
+                    ),
+                    label = "thinking-dot-$index",
+                )
+                animated
+            } else 1f
+            Box(
+                Modifier
+                    .size(6.dp)
+                    .background(colors.onSurfaceVariant.copy(alpha = alpha), CircleShape),
+            )
+        }
     }
 }
 
@@ -243,10 +284,11 @@ fun ThinkingBlock(
             )
             Spacer(Modifier.width(6.dp))
             Text(
-                text = if (streaming) "Reasoning…" else "Reasoning",
+                text = "Reasoning",
                 style = MaterialTheme.typography.labelSmall,
                 color = colors.tertiary,
             )
+            if (streaming) ThinkingPulse(modifier = Modifier.padding(start = 6.dp))
             Spacer(Modifier.weight(1f))
             Text(
                 text = "${text.split('\n').size} lines",

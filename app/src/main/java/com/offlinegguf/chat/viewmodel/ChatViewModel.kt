@@ -482,6 +482,10 @@ class ChatViewModel(
                 flushMillis = if (settings.reduceMotion) 120L else 256L,
                 flushChars = 48,
             )
+            val thinkingCoalescer = StreamCoalescer(
+                flushMillis = if (settings.reduceMotion) 120L else 256L,
+                flushChars = 48,
+            )
             val thinking = ThinkingParser()
             val answer = StringBuilder()
             val reasoning = StringBuilder()
@@ -504,7 +508,16 @@ class ChatViewModel(
                 when (event) {
                     is EngineEvent.Token -> {
                         val out = thinking.offer(event.text)
-                        if (out.thinking.isNotEmpty()) reasoning.append(out.thinking)
+                        if (out.thinking.isNotEmpty()) {
+                            reasoning.append(out.thinking)
+                            if (thinkingCoalescer.offer(out.thinking) != null) {
+                                _state.update {
+                                    if (it.streamingMessageId == assistantId) {
+                                        it.copy(streamingThinking = reasoning.toString())
+                                    } else it
+                                }
+                            }
+                        }
                         if (out.answer.isNotEmpty()) {
                             answer.append(out.answer)
                             // Persist and repaint at the coalescer's cadence, not per token.

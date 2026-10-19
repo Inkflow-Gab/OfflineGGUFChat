@@ -225,7 +225,7 @@ fun SettingsScreen(
                     )
                     ToggleRow(
                         title = "Show reasoning",
-                        subtitle = "Collapsed blocks for models that think before answering.",
+                        subtitle = "Show or hide reasoning emitted by the model; hidden reasoning may still take time to generate.",
                         checked = state.settings.showThinking,
                         onCheckedChange = { viewModel.setShowThinking(it) },
                     )

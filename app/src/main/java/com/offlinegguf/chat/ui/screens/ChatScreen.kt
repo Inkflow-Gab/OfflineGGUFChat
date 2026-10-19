@@ -303,9 +303,10 @@ fun ChatScreen(
                     val streaming = message.id == state.streamingMessageId
                     // The database is written a few times a second; the in-memory
                     // text is immediate, so paint that while streaming.
-                    val shown = if (streaming && state.streamingText.isNotBlank()) {
+                    val hasStreamContent = state.streamingText.isNotBlank() || state.streamingThinking.isNotBlank()
+                    val shown = if (streaming && hasStreamContent) {
                         message.copy(
-                            content = state.streamingText,
+                            content = state.streamingText.ifBlank { message.content },
                             thinkingText = state.streamingThinking.ifBlank { message.thinkingText },
                         )
                     } else message

@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
@@ -52,10 +53,12 @@ fun MarkdownText(
     style: TextStyle = ChatProse,
     previousCode: Map<Int, String> = emptyMap(),
     showLineNumbers: Boolean = true,
+    textColor: Color? = null,
 ) {
     val blocks = remember(text) { MarkdownBlocks.parse(text) }
     val spacing = OfflineGgufTheme.spacing
     val colors = MaterialTheme.colorScheme
+    val foreground = textColor ?: colors.onSurface
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -65,9 +68,9 @@ fun MarkdownText(
         blocks.forEach { block ->
             when (block) {
                 is MarkdownBlocks.Block.Paragraph -> Text(
-                    text = inline(block.text, colors),
+                    text = inline(block.text, colors, foreground),
                     style = style,
-                    color = colors.onSurface,
+                    color = foreground,
                 )
 
                 is MarkdownBlocks.Block.Heading -> {
@@ -78,9 +81,9 @@ fun MarkdownText(
                         else -> MaterialTheme.typography.titleSmall
                     }
                     Text(
-                        text = inline(block.text, colors),
+                        text = inline(block.text, colors, foreground),
                         style = headingStyle,
-                        color = colors.onSurface,
+                        color = foreground,
                         modifier = Modifier.padding(top = if (block.level <= 2) spacing.xs else 0.dp),
                     )
                 }
@@ -104,12 +107,12 @@ fun MarkdownText(
                             Text(
                                 text = if (block.ordered) "${index + 1}." else "—",
                                 style = style,
-                                color = colors.tertiary,
+                                color = foreground,
                             )
                             Text(
-                                text = inline(item, colors),
+                                text = inline(item, colors, foreground),
                                 style = style,
-                                color = colors.onSurface,
+                                color = foreground,
                                 modifier = Modifier.weight(1f),
                             )
                         }
@@ -124,9 +127,9 @@ fun MarkdownText(
                             .background(colors.outline, RoundedCornerShape(1.dp)),
                     )
                     Text(
-                        text = inline(block.text, colors),
+                        text = inline(block.text, colors, foreground),
                         style = style.copy(fontStyle = FontStyle.Italic),
-                        color = colors.onSurfaceVariant,
+                        color = foreground,
                         modifier = Modifier.padding(start = spacing.md).weight(1f),
                     )
                 }
@@ -179,10 +182,10 @@ private fun TableBlock(table: MarkdownBlocks.Block.Table) {
 
 /** Inline spans → one AnnotatedString. */
 @Composable
-private fun inline(text: String, colors: ColorScheme): AnnotatedString {
+private fun inline(text: String, colors: ColorScheme, foreground: Color): AnnotatedString {
     val spans = remember(text) { MarkdownBlocks.inline(text) }
     val codeBackground = colors.surfaceContainerHigh
-    val muted = colors.tertiary
+    val muted = foreground
     return buildAnnotatedString {
         spans.forEach { span ->
             when (span) {

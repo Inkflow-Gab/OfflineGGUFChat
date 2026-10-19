@@ -130,6 +130,7 @@ private fun UserBubble(
             MarkdownText(
                 text = message.content,
                 style = MaterialTheme.typography.bodyLarge,
+                textColor = colors.onPrimary,
             )
         }
         Row(
@@ -253,6 +254,20 @@ private fun AssistantMessage(
                     }
                 }
             }
+        }
+
+        if (
+            streaming && message.content.isBlank() &&
+            (!showThinking || message.thinkingText.isNullOrBlank())
+        ) {
+            ThinkingPulse(
+                label = when {
+                    showThinking -> "Preparing response…"
+                    !message.thinkingText.isNullOrBlank() -> "Thinking privately…"
+                    else -> "Starting response…"
+                },
+                modifier = Modifier.padding(top = spacing.xs),
+            )
         }
 
         StreamingRule(active = streaming, modifier = Modifier.padding(top = spacing.sm))

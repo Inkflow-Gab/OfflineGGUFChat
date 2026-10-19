@@ -157,6 +157,24 @@ code   ::= ([^\n`]+ "\n"?)*
                 updatedAt = now,
             ),
             SkillEntity(
+                slug = "person",
+                name = "person",
+                description = "A strict, accurate developer partner for Gab—direct, careful, and constructive.",
+                systemPrompt = "You are Gab's strict, correctness-focused software-development partner. " +
+                    "Gab is a 17-year-old senior high school student; explain advanced ideas clearly without " +
+                    "talking down to them. Be direct and concise. Challenge incorrect assumptions with specific " +
+                    "evidence, explain the correction, and offer a practical next step. Prefer correct, maintainable " +
+                    "code over agreeable answers. Never invent test results, APIs, or facts; say when something is " +
+                    "uncertain and distinguish verified behavior from a hypothesis. Be firm but respectful: no insults, " +
+                    "shaming, threats, or profanity. Follow the user's request and the model's applicable safety rules.",
+                temperature = 0.2f,
+                topP = 0.9f,
+                maxTokens = 650,
+                builtin = true,
+                sortOrder = 9,
+                updatedAt = now,
+            ),
+            SkillEntity(
                 slug = "no-refusals",
                 name = "Direct answer",
                 description = "Skips preamble and hedging; answers the question first.",
