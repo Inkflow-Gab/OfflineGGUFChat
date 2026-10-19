@@ -261,8 +261,10 @@ class CloudModelsTest {
         val models = CloudModels.parseModels(body, "gemini")
         val ids = models.map { it.id }.toSet()
         assertEquals(setOf("gemini-3.8-flash", "gemini-3.1-pro", "gemini-2.5-flash-lite"), ids)
-        // Personal-key Gemini usage is free-tier, like Groq/NVIDIA.
-        assertTrue(models.all { it.isFree })
+        // The free tier covers Flash, not Pro. Badging Pro "FREE" would be a lie.
+        assertTrue(models.first { it.id == "gemini-3.8-flash" }.isFree)
+        assertTrue(models.first { it.id == "gemini-2.5-flash-lite" }.isFree)
+        assertFalse(models.first { it.id == "gemini-3.1-pro" }.isFree)
     }
 
     @Test

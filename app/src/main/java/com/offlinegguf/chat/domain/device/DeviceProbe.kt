@@ -95,14 +95,29 @@ object DeviceProbe {
             val node = File(root, "cpu$index/cpufreq/cpuinfo_max_freq")
             if (node.canRead()) node.readText().trim().toLongOrNull() ?: 0L else 0L
         }
+        performanceCoresFromClocks(clocks)
+    }.getOrDefault(0)
+
+    /**
+     * Core count of the fastest cpufreq cluster, from each core's max clock.
+     *
+     * Clusters share one frequency table, so "the big cores" are exactly the
+     * cores at the top clock. A percentage *band* is wrong here: a Helio G85
+     * runs its two A75s at 2.0 GHz and six A55s at 1.8 GHz — only 10% apart in
+     * clock, but nowhere near equal in work per second. Counting by equality
+     * (with a small tolerance for table rounding) picks the 2 real cores.
+     *
+     * Returns 0 for a uniform CPU, or when the clocks are unreadable, which
+     * callers read as "no cluster information".
+     */
+    fun performanceCoresFromClocks(clocks: List<Long>): Int {
+        if (clocks.size <= 2) return 0
         if (clocks.any { it <= 0L }) return 0
         val fastest = clocks.maxOrNull() ?: 0L
         if (fastest <= 0L) return 0
-        // Within 15% of the top bin counts as a performance core. A uniform CPU
-        // lands here with every core, which the caller treats as "no clusters".
-        val big = clocks.count { it >= (fastest * 0.85).toLong() }
-        if (big >= cores) 0 else big
-    }.getOrDefault(0)
+        val big = clocks.count { it >= (fastest * 0.95).toLong() }
+        return if (big >= clocks.size) 0 else big
+    }
 
     /**
      * Kernel page size. Almost always 4096, but 16 KB page devices exist and a

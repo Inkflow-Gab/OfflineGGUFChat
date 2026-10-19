@@ -21,8 +21,22 @@ object CloudModels {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
-    /** Hosts whose personal keys are free to use for chat (no per-token price). */
-    private val freeTierProviders = setOf("groq", "nvidia", "gemini", "cerebras", "mistral")
+    /** Hosts whose whole chat catalog is free with a personal key. */
+    private val freeTierProviders = setOf("groq", "nvidia")
+
+    /**
+     * Free with a personal key, per model where a host mixes tiers.
+     *
+     * Gemini is the reason this is not a provider-wide flag: AI Studio's free
+     * tier covers the Flash models, not Pro. Labelling a paid model "FREE"
+     * walks someone into a billing prompt, so the claim is narrowed here.
+     */
+    private fun isFreeWithKey(providerId: String, id: String): Boolean = when (providerId) {
+        "gemini" -> "flash" in id.lowercase()
+        "cerebras" -> true
+        "mistral" -> true
+        else -> providerId in freeTierProviders
+    }
 
     /**
      * Model ids that are free on a metered host. OpenCode Zen's `big-pickle` has
@@ -44,7 +58,6 @@ object CloudModels {
             ?: runCatching { root.jsonObject["data"]?.jsonArray }.getOrNull()
             ?: runCatching { root.jsonObject["models"]?.jsonArray }.getOrNull()
             ?: return emptyList()
-        val freeTier = providerId in freeTierProviders
         val zen = providerId == "opencode"
         val gemini = providerId == "gemini"
         return data.mapNotNull { element ->
@@ -72,7 +85,8 @@ object CloudModels {
             val zeroPriced = promptPrice != null && completionPrice != null &&
                 promptPrice <= 0.0 && completionPrice <= 0.0
             val name = obj.string("name") ?: id
-            val free = zeroPriced || isFreeId(id) || name.contains("Free") || freeTier
+            val free = zeroPriced || isFreeId(id) || name.contains("Free") ||
+                isFreeWithKey(providerId, id)
             CloudModel(
                 id = id,
                 name = name,

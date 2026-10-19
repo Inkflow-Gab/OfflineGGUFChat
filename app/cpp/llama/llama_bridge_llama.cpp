@@ -298,7 +298,7 @@ bool BridgeGenerate(BridgeSession *s, const std::string &prompt, const BridgeSam
     if (stop_tokens.empty()) {
         static const char *kMarkers[] = {
             "<|im_end|>", "<|endoftext|>", "<|eot_id|>", "<|end_of_text|>",
-            "<|end|>", "<end_of_turn>", "</s>", "<|im_end|>\n",
+            "<|end|>", "<end_of_turn>", "</s>",
         };
         for (const char *marker : kMarkers) {
             compat::Tokens ids =
