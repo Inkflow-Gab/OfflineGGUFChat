@@ -166,14 +166,14 @@ class ThinkingParserTest {
         // Before the prefix marker existed the whole block rendered as answer.
         val parser = ThinkingParser()
 
-        val opened = parser.offer(" thinking\n")
+        val opened = parser.offer("<think\n")
         assertEquals("", opened.answer)
 
         val body = parser.offer("weighing the options\n")
         assertEquals("", body.answer)
         assertTrue(body.thinking.contains("weighing"))
 
-        val closed = parser.offer("Hi there")
+        val closed = parser.offer("</think>Hi there")
         assertEquals("Hi there", closed.answer)
         assertTrue(parser.hasSeenThinking)
     }
