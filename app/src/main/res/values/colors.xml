@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="launcher_background">#0F0F0F</color>
-    <color name="teal_200">#03DAC6</color>
-    <color name="teal_700">#00897B</color>
+    <!-- The whole palette is monochrome; these exist for the XML theme and the
+         launcher, which run before Compose draws anything. -->
+    <color name="ink">#FF0B0B0C</color>
+    <color name="paper">#FFFFFFFF</color>
+    <color name="window_light">#FFFFFFFF</color>
+    <color name="window_dark">#FF0B0B0C</color>
+    <color name="launcher_background">#FF0B0B0C</color>
 </resources>
