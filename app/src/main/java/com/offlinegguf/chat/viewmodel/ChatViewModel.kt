@@ -26,7 +26,9 @@ import com.offlinegguf.chat.inference.SamplingParams
 import com.offlinegguf.chat.inference.StreamCoalescer
 import com.offlinegguf.chat.inference.TemplateStyle
 import com.offlinegguf.chat.inference.ThinkingParser
+import com.offlinegguf.chat.util.Formats
 import com.offlinegguf.chat.util.MarkdownBlocks
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,7 +38,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 /** A text file attached to the next message. */
 data class Attachment(val name: String, val text: String, val bytes: Long)
@@ -446,9 +447,12 @@ class ChatViewModel(
             val finalText = PromptFormatter.trimAtEndMarker(snapshot.templateStyle, answer.toString()).trim()
             publishStream(assistantId, finalText, reasoning.toString().trim())
 
-            if (failure != null) {
-                chat.failMessage(assistantId, failure)
-                _state.update { it.copy(error = failure) }
+            // `failure` is mutated from inside the collector below, so the compiler
+            // will not smart-cast it; copy it into a stable local first.
+            val failureText = failure
+            if (failureText != null) {
+                chat.failMessage(assistantId, failureText)
+                _state.update { it.copy(error = failureText) }
             } else {
                 chat.finishMessage(assistantId, outcome, stats)
             }

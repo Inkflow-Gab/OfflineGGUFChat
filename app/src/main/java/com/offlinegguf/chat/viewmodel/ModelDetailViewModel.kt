@@ -12,13 +12,14 @@ import com.offlinegguf.chat.data.repository.toSpec
 import com.offlinegguf.chat.domain.device.DeviceProfile
 import com.offlinegguf.chat.domain.fit.ModelFit
 import com.offlinegguf.chat.inference.LoadRequest
+import com.offlinegguf.chat.util.Formats
+import java.io.File
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.io.File
 
 /** KV cache quantizations llama.cpp supports, in the order they are offered. */
 val KvTypes = listOf("f16", "q8_0", "q4_0")

@@ -9,10 +9,10 @@ import com.offlinegguf.chat.data.local.AppDatabase
 import com.offlinegguf.chat.data.local.LocalModelEntity
 import com.offlinegguf.chat.domain.device.DeviceProfile
 import com.offlinegguf.chat.domain.fit.ModelFit
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
-import java.io.File
 
 sealed class ImportResult {
     data class Success(val model: LocalModelEntity) : ImportResult()
@@ -177,11 +177,16 @@ class ModelRepository(
             for (file in files.sortedBy { it.name.lowercase() }) {
                 seen += file.absolutePath
                 scanned++
-                val probe = runCatching { reader.read(file) }.getOrElse {
-                    errors += "${file.name}: ${it.message ?: it.javaClass.simpleName}"
+                // `continue` inside getOrElse would be a non-local jump out of an
+                // inline lambda, which Kotlin still treats as experimental.
+                val probeResult = runCatching { reader.read(file) }
+                if (probeResult.isFailure) {
+                    val cause = probeResult.exceptionOrNull()
+                    errors += "${file.name}: ${cause?.message ?: cause?.javaClass?.simpleName ?: "unreadable"}"
                     invalid++
                     continue
                 }
+                val probe = probeResult.getOrThrow()
                 val existing = dao.findByPath(file.absolutePath)
                 val entity = toEntity(file, probe, existing, null, null)
                 dao.upsert(entity)

@@ -2,6 +2,7 @@ package com.offlinegguf.chat.domain.fit
 
 import com.offlinegguf.chat.domain.device.DeviceProfile
 import com.offlinegguf.chat.domain.device.DeviceTier
+import com.offlinegguf.chat.util.Formats
 import kotlin.math.max
 import kotlin.math.min
 

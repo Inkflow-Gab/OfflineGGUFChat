@@ -49,17 +49,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          {
-            echo '### `check-native.sh` failed'
-            echo
-            echo '```'
-            grep -E '^e: |^w: .*error|error: |^> Task .*FAILED|FAILED$|FAILURE:|AssertionError|expected:|Caused by:|What went wrong' \
-              build.log | head -100 || true
-            echo '```'
-            
-          } > digest.md
-          gh pr comment "${{ github.event.pull_request.number }}" --body-file digest.md
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: "./scripts/ci-digest.sh build.log '`check-native.sh` failed'"
 
   # ----------------------------------------------------------------- tests
   unit-tests:
@@ -107,17 +98,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          {
-            echo '### `testDebugUnitTest` failed'
-            echo
-            echo '```'
-            grep -E '^e: |^w: .*error|error: |^> Task .*FAILED|FAILED$|FAILURE:|AssertionError|expected:|Caused by:|What went wrong' \
-              build.log | head -100 || true
-            echo '```'
-            
-          } > digest.md
-          gh pr comment "${{ github.event.pull_request.number }}" --body-file digest.md
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: "./scripts/ci-digest.sh build.log '`testDebugUnitTest` failed'"
 
   # ------------------------------------------------------------------ apks
   apk:
@@ -183,17 +165,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          {
-            echo '### `assembleDebug` failed'
-            echo
-            echo '```'
-            grep -E '^e: |^w: .*error|error: |^> Task .*FAILED|FAILED$|FAILURE:|AssertionError|expected:|Caused by:|What went wrong' \
-              build.log | head -100 || true
-            echo '```'
-            
-          } > digest.md
-          gh pr comment "${{ github.event.pull_request.number }}" --body-file digest.md
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: "./scripts/ci-digest.sh build.log 'APK build failed'"
 
   # -------------------------------------------------------------- release
   # Pushes a v* tag and the same APKs become a GitHub Release.

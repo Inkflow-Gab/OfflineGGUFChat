@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,6 +57,7 @@ import com.offlinegguf.chat.ui.theme.MetaKeyText
 import com.offlinegguf.chat.ui.theme.OfflineGgufTheme
 import com.offlinegguf.chat.util.Formats
 import com.offlinegguf.chat.viewmodel.DiscoverViewModel
+import kotlin.math.roundToInt
 
 /**
  * Device-aware model discovery.

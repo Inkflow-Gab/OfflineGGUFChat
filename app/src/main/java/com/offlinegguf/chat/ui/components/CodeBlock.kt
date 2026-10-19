@@ -1,5 +1,7 @@
 package com.offlinegguf.chat.ui.components
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -7,9 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.animateContentSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -40,8 +40,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.offlinegguf.chat.R
 import com.offlinegguf.chat.ui.theme.CodeGutterText
-import com.offlinegguf.chat.ui.theme.DiffPalette
 import com.offlinegguf.chat.ui.theme.CodeText
+import com.offlinegguf.chat.ui.theme.DiffPalette
 import com.offlinegguf.chat.ui.theme.OfflineGgufTheme
 import com.offlinegguf.chat.util.LineDiffer
 import com.offlinegguf.chat.util.UnifiedDiff

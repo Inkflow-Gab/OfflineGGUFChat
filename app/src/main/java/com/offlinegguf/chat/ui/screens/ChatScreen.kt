@@ -39,6 +39,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,9 +61,10 @@ import com.offlinegguf.chat.ui.components.InkTopBar
 import com.offlinegguf.chat.ui.components.InputBar
 import com.offlinegguf.chat.ui.components.MessageRow
 import com.offlinegguf.chat.ui.components.SectionTitle
-import com.offlinegguf.chat.viewmodel.ChatViewModel
 import com.offlinegguf.chat.ui.theme.OfflineGgufTheme
 import com.offlinegguf.chat.util.Formats
+import com.offlinegguf.chat.viewmodel.ChatViewModel
+import kotlinx.coroutines.launch
 
 /**
  * The transcript.
@@ -94,6 +96,7 @@ fun ChatScreen(
     val motion = OfflineGgufTheme.motion
 
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
     var menuOpen by remember { mutableStateOf(false) }
     var showGauge by remember { mutableStateOf(false) }
 
@@ -330,7 +333,10 @@ fun ChatScreen(
             }
 
             // Jump back to the answer when the user has scrolled away from it.
-            AnimatedVisibility(
+            // Fully qualified on purpose: this Box sits inside a Column, and the
+            // ColumnScope overload of AnimatedVisibility would otherwise win
+            // resolution and then refuse to be called from a BoxScope.
+            androidx.compose.animation.AnimatedVisibility(
                 visible = !atBottom && state.messages.size > 3,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(spacing.gutter),
                 enter = fadeIn(tween(motion.fast)),
@@ -343,8 +349,10 @@ fun ChatScreen(
                         .clickable {
                             val target = state.messages.size - 1
                             if (target >= 0) {
-                                if (settings.reduceMotion) listState.scrollToItem(target)
-                                else listState.animateScrollToItem(target)
+                                scope.launch {
+                                    if (settings.reduceMotion) listState.scrollToItem(target)
+                                    else listState.animateScrollToItem(target)
+                                }
                             }
                         },
                     contentAlignment = Alignment.Center,

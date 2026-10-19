@@ -24,9 +24,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import java.io.File
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -47,6 +44,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.offlinegguf.chat.AppContainer
@@ -67,6 +66,7 @@ import com.offlinegguf.chat.ui.theme.OfflineGgufTheme
 import com.offlinegguf.chat.util.Formats
 import com.offlinegguf.chat.viewmodel.ModelSort
 import com.offlinegguf.chat.viewmodel.ModelsViewModel
+import java.io.File
 
 /**
  * The local library.
@@ -258,7 +258,10 @@ fun ModelsScreen(
             state.importing?.let { progress ->
                 // A real dialog: a multi-gigabyte copy cannot be interrupted by a
                 // stray tap, and the user should not be able to wander off mid-copy.
-                Dialog(properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)) {
+                Dialog(
+                    onDismissRequest = { },
+                    properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+                ) {
                     ImportCard(
                         name = progress.name,
                         label = progress.label,

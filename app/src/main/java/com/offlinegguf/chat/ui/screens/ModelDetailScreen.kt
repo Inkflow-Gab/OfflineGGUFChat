@@ -68,8 +68,8 @@ import com.offlinegguf.chat.ui.theme.MetaKeyText
 import com.offlinegguf.chat.ui.theme.OfflineGgufTheme
 import com.offlinegguf.chat.util.Formats
 import com.offlinegguf.chat.viewmodel.KvTypes
-import com.offlinegguf.chat.viewmodel.ModelTuning
 import com.offlinegguf.chat.viewmodel.ModelDetailViewModel
+import com.offlinegguf.chat.viewmodel.ModelTuning
 import kotlin.math.roundToInt
 
 /**
@@ -341,11 +341,12 @@ fun ModelDetailScreen(
                     if (state.profile.pageSizeBytes > 0) {
                         KeyValueRow("page size", "${state.profile.pageSizeBytes / 1024} KB")
                     }
-                    KeyValueRow("engine", if (state.engineAvailable) state.engineNotice ?: "native" else "absent")
-                    if (!state.engineAvailable && state.engineNotice != null) {
+                    val notice = state.engineNotice
+                    KeyValueRow("engine", if (state.engineAvailable) notice ?: "native" else "absent")
+                    if (!state.engineAvailable && notice != null) {
                         Spacer(Modifier.height(spacing.sm))
                         Text(
-                            text = state.engineNotice,
+                            text = notice,
                             style = MaterialTheme.typography.bodySmall,
                             color = colors.onSurfaceVariant,
                         )
@@ -652,7 +653,7 @@ private fun SamplingCard(
     Section(title = "Sampling") {
         SliderRow("temperature", tuning.temperature, 0f..2f, onValue = onTemperature, format = { Formats.fixed(it.toDouble(), 2) })
         SliderRow("top-p", tuning.topP, 0.1f..1f, onValue = onTopP, format = { Formats.fixed(it.toDouble(), 2) })
-        SliderRow("top-k", tuning.topK.toFloat(), 0f..200f, steps = 40, onValue = onTopK, format = { it.toInt().toString() })
+        SliderRow("top-k", tuning.topK.toFloat(), 0f..200f, steps = 40, onValue = { onTopK(it.toInt()) }, format = { it.toInt().toString() })
         SliderRow("min-p", tuning.minP, 0f..0.5f, onValue = onMinP, format = { Formats.fixed(it.toDouble(), 3) })
         SliderRow(
             "repeat penalty",
@@ -666,7 +667,7 @@ private fun SamplingCard(
             tuning.maxTokens.toFloat(),
             16f..4096f,
             steps = 63,
-            onValue = onMaxTokens,
+            onValue = { onMaxTokens(it.toInt()) },
             format = { it.toInt().toString() },
         )
         Spacer(Modifier.height(spacing.sm))
@@ -679,7 +680,7 @@ private fun SliderRow(
     label: String,
     value: Float,
     range: ClosedFloatingPointRange<Float>,
-    onValue: (Int) -> Unit,
+    onValue: (Float) -> Unit,
     modifier: Modifier = Modifier,
     steps: Int = 0,
     format: (Float) -> String = { it.toInt().toString() },
@@ -709,7 +710,7 @@ private fun SliderRow(
         Slider(
             value = draft.coerceIn(range.start, range.endInclusive),
             onValueChange = { draft = it },
-            onValueChangeFinished = { onValue(draft.roundToInt()) },
+            onValueChangeFinished = { onValue(draft) },
             valueRange = range,
             steps = steps,
             colors = SliderDefaults.colors(

@@ -12,10 +12,10 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.offlinegguf.chat.data.catalog.ModelStyle
 import com.offlinegguf.chat.inference.SamplingParams
 import com.offlinegguf.chat.ui.theme.ThemeMode
+import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
-import java.io.IOException
 
 /** Immutable snapshot of every user preference. */
 data class AppSettings(

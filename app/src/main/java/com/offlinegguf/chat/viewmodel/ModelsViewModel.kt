@@ -10,13 +10,14 @@ import com.offlinegguf.chat.data.local.LocalModelEntity
 import com.offlinegguf.chat.data.repository.ImportResult
 import com.offlinegguf.chat.domain.device.DeviceProfile
 import com.offlinegguf.chat.domain.fit.ModelFit
+import com.offlinegguf.chat.util.Formats
+import java.io.File
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.io.File
 
 /** Live copy progress for a GGUF being pulled into app storage. */
 data class ImportProgress(val name: String, val copied: Long, val total: Long) {
@@ -214,7 +215,7 @@ class ModelsViewModel(private val container: AppContainer) : ViewModel() {
             paramCount = model.paramCount,
             contextLength = model.contextLength.toLong(),
             blockCount = model.blockCount.toLong(),
-            embeddingLength = model.embeddingLength,
+            embeddingLength = model.embeddingLength.toLong(),
             quantization = model.quantization,
             hasChatTemplate = model.hasChatTemplate,
             multimodal = model.multimodal,

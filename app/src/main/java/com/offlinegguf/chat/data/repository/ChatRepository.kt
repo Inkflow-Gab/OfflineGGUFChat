@@ -8,6 +8,10 @@ import com.offlinegguf.chat.data.local.MessageStatus
 import com.offlinegguf.chat.data.local.Roles
 import com.offlinegguf.chat.inference.GenerationOutcome
 import com.offlinegguf.chat.inference.GenerationStats
+import com.offlinegguf.chat.util.Formats
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -17,9 +21,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * Chat persistence: conversations, messages, feedback and export.

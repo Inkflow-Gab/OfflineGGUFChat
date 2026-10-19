@@ -11,6 +11,7 @@ import com.offlinegguf.chat.domain.device.DeviceProbe
 import com.offlinegguf.chat.domain.device.DeviceProfile
 import com.offlinegguf.chat.inference.SamplingParams
 import com.offlinegguf.chat.ui.theme.ThemeMode
+import com.offlinegguf.chat.util.Formats
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -131,8 +132,8 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setRepeatPenalty(value: Float) = withSampling { it.copy(repeatPenalty = value) }
 
-    private fun withSampling(change: SamplingParams.() -> SamplingParams) = launchEdit {
-        store.setSampling(_state.value.settings.sampling().change())
+    private fun withSampling(change: (SamplingParams) -> SamplingParams) = launchEdit {
+        store.setSampling(change(_state.value.settings.sampling()))
     }
 
     private fun launchEdit(block: suspend () -> Unit) {

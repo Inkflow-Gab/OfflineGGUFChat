@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.offlinegguf.chat.AppContainer
+import com.offlinegguf.chat.BuildConfig
 import com.offlinegguf.chat.R
 import com.offlinegguf.chat.data.settings.AppSettings
 import com.offlinegguf.chat.ui.components.ConfirmDialog
@@ -60,6 +61,7 @@ import com.offlinegguf.chat.ui.theme.OfflineGgufTheme
 import com.offlinegguf.chat.ui.theme.ThemeMode
 import com.offlinegguf.chat.util.Formats
 import com.offlinegguf.chat.viewmodel.SettingsViewModel
+import kotlin.math.roundToInt
 
 /**
  * Preferences, engine status and the data ledger.
@@ -459,6 +461,7 @@ private fun ToggleRow(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
+    val spacing = OfflineGgufTheme.spacing
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,

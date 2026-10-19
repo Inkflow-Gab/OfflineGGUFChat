@@ -1,12 +1,12 @@
 package com.offlinegguf.chat.data.gguf
 
+import java.io.ByteArrayInputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.ByteArrayInputStream
 
 /**
  * Golden fixtures for the Kotlin GGUF reader.

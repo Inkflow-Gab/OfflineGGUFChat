@@ -8,8 +8,8 @@ import com.offlinegguf.chat.AppContainer
 import com.offlinegguf.chat.data.catalog.CatalogModel
 import com.offlinegguf.chat.data.catalog.ModelAdvisor
 import com.offlinegguf.chat.data.catalog.ModelStyle
-import com.offlinegguf.chat.domain.device.DeviceProfile
 import com.offlinegguf.chat.domain.device.DeviceProbe
+import com.offlinegguf.chat.domain.device.DeviceProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

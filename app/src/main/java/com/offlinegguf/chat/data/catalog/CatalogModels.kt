@@ -1,9 +1,9 @@
 package com.offlinegguf.chat.data.catalog
 
 import android.content.Context
+import java.net.URLEncoder
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import java.net.URLEncoder
 
 /**
  * One curated GGUF build the app knows how to recommend.
