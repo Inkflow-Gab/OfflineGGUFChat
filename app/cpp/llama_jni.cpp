@@ -204,6 +204,7 @@ enum StatsSlot {
     kStatsCtx,
     kStatsThreads,
     kStatsBatch,
+    kStatsPrefillThreads,
     kStatsCount
 };
 
@@ -517,6 +518,7 @@ Java_com_offlinegguf_chat_inference_LlamaNative_nativeGenerate(
         stats.n_ctx,
         stats.n_threads,
         stats.n_batch,
+        stats.n_threads_batch,
     };
     env->SetLongArrayRegion(result, 0, kStatsCount, values);
     return result;

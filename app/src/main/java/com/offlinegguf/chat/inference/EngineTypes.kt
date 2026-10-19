@@ -102,6 +102,8 @@ data class GenerationStats(
     val contextSize: Int = 0,
     val threads: Int = 0,
     val batch: Int = 0,
+    /** Workers used for prompt processing; 0 when the native build did not say. */
+    val prefillThreads: Int = 0,
 ) {
     /** Decode-only speed, excluding prompt evaluation and the first-token wait. */
     val decodeTokensPerSecond: Double
@@ -140,6 +142,7 @@ data class GenerationStats(
                 contextSize = values.getOrNull(12)?.toInt() ?: 0,
                 threads = values.getOrNull(13)?.toInt() ?: 0,
                 batch = values.getOrNull(14)?.toInt() ?: 0,
+                prefillThreads = values.getOrNull(15)?.toInt() ?: 0,
             )
         }
     }

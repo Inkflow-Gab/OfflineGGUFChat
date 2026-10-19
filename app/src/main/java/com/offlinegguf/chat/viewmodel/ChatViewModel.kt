@@ -810,6 +810,7 @@ class ChatViewModel(
                 contextSize = if (stats.contextSize > 0) stats.contextSize else snapshot.contextSize,
                 threads = stats.threads,
                 batch = stats.batch,
+                prefillThreads = stats.prefillThreads,
                 promptChars = prompt.length,
                 estimatedPromptTokens = window.estimatedPromptTokens,
                 reasoningChars = reasoningChars,

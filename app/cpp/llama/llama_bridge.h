@@ -19,6 +19,10 @@ struct BridgeLoadParams {
     int32_t n_ctx = 2048;
     int32_t n_gpu_layers = 0;
     int32_t n_threads = 4;
+    // Workers for prompt processing. 0 = derive from the core count, which is
+    // what the app uses: prefill scales with every core it can borrow, while
+    // n_threads stays on the performance cluster because decode does not.
+    int32_t n_threads_batch = 0;
     int32_t n_batch = 512;
     bool use_mmap = true;
     bool use_mlock = false;
@@ -71,6 +75,7 @@ struct BridgeStats {
     int32_t n_ctx = 0;
     int32_t n_threads = 0;
     int32_t n_batch = 0;
+    int32_t n_threads_batch = 0;
 };
 
 // Invoked from the generating thread. `bytes` is raw UTF-8 for one tokenizer

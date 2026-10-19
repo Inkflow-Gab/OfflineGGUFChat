@@ -33,6 +33,8 @@ data class InferenceTrace(
     val contextSize: Int = 0,
     val threads: Int = 0,
     val batch: Int = 0,
+    /** Decode threads / prefill threads, e.g. "2/7" — the split is deliberate. */
+    val prefillThreads: Int = 0,
     val promptChars: Int = 0,
     val estimatedPromptTokens: Int = 0,
     val reasoningChars: Int = 0,
@@ -76,6 +78,7 @@ data class InferenceTrace(
         append(" calls=").append(decodeCalls)
         append(" ctx=").append(contextSize)
         append(" threads=").append(threads)
+        append(" prefillThreads=").append(prefillThreads)
         append(" batch=").append(batch)
         append(" loads=").append(modelLoads)
         append(" backend=").append(backend)
@@ -89,7 +92,9 @@ data class InferenceTrace(
         if (reasoningChars > 0) {
             append(" · reasoning ").append(reasoningTokens).append(" tok")
         }
-        append(" · ").append(threads).append(" threads, ctx ").append(contextSize)
+        append(" · ").append(threads).append(" threads")
+        if (prefillThreads > threads) append("/").append(prefillThreads).append(" for prompt")
+        append(", ctx ").append(contextSize)
         append(", loads ").append(modelLoads)
     }
 

@@ -94,13 +94,14 @@ inline void SetKvCacheType(llama_context_params &p, const std::string &type_k,
 #endif
 }
 
-inline void SetContextThreads(llama_context_params &p, int32_t threads) {
+inline void SetContextThreads(llama_context_params &p, int32_t threads, int32_t threads_batch) {
 #if defined(OFFLINEGGUF_LLAMA_HAS_CTX_THREADS)
     p.n_threads = threads;
-    p.n_threads_batch = threads > 0 ? threads : p.n_threads_batch;
+    p.n_threads_batch = threads_batch > 0 ? threads_batch : (threads > 0 ? threads : p.n_threads_batch);
 #else
     (void)p;
-    (void)threads;  // newer builds configure threads on the CPU backend
+    (void)threads;
+    (void)threads_batch;  // newer builds configure threads on the CPU backend
 #endif
 }
 

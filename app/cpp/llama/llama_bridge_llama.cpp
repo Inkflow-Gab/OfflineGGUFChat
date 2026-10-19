@@ -65,6 +65,7 @@ struct BridgeSession {
     int32_t n_ctx = 0;
     int32_t n_batch = 512;
     int32_t n_threads = 0;
+    int32_t n_threads_batch = 0;
     std::string last_error;
 };
 
@@ -123,8 +124,20 @@ bool BridgeLoad(BridgeSession *s, const std::string &path, const BridgeLoadParam
         train_ctx > 0 ? std::min<int32_t>(params.n_ctx, train_ctx) : params.n_ctx);
     cp.n_batch = static_cast<uint32_t>(std::max<int32_t>(
         8, std::min<int32_t>(params.n_batch, static_cast<int32_t>(cp.n_ctx))));
+    // Prefill and decode want different thread counts. Prompt processing is
+    // throughput-bound and keeps every core busy, so it scales even when half
+    // of them are little cores. Per-token decode is latency-bound: ggml waits
+    // for its slowest worker at every barrier, so adding A55s there is a net
+    // loss. Decode keeps `n_threads` (the performance cluster); batch gets the
+    // rest of the device, minus one for Android, capped at 8.
+    int32_t batch_threads = params.n_threads_batch;
+    if (batch_threads <= 0) {
+        const unsigned hw = std::thread::hardware_concurrency();
+        const int32_t cores = hw > 0 ? static_cast<int32_t>(hw) : params.n_threads;
+        batch_threads = std::max(params.n_threads, std::min<int32_t>(8, cores > 1 ? cores - 1 : 1));
+    }
     compat::SetKvCacheType(cp, params.kv_type_k, params.kv_type_v);
-    compat::SetContextThreads(cp, params.n_threads);
+    compat::SetContextThreads(cp, params.n_threads, batch_threads);
 #if defined(OFFLINEGGUF_LLAMA_HAS_ABORT_CALLBACK)
     cp.abort_callback = &StopRequested;
     cp.abort_callback_data = &s->stop_requested;
@@ -141,6 +154,7 @@ bool BridgeLoad(BridgeSession *s, const std::string &path, const BridgeLoadParam
     s->n_ctx = static_cast<int32_t>(cp.n_ctx);
     s->n_batch = static_cast<int32_t>(cp.n_batch);
     s->n_threads = params.n_threads > 0 ? params.n_threads : 0;
+    s->n_threads_batch = batch_threads;
 
     for (const auto &lora : params.loras) {
         if (!compat::SupportsAdapters()) {
@@ -214,6 +228,7 @@ bool BridgeGenerate(BridgeSession *s, const std::string &prompt, const BridgeSam
     stats.n_ctx = s->n_ctx;
     stats.n_batch = s->n_batch;
     stats.n_threads = s->n_threads;
+    stats.n_threads_batch = s->n_threads_batch;
 
     // Never ask the cache for more than it holds: keep the newest tokens, which
     // is what matters for a chat tail. (Older turns stay in the DB, not the KV.)
@@ -367,14 +382,14 @@ bool BridgeGenerate(BridgeSession *s, const std::string &prompt, const BridgeSam
     __android_log_print(
         ANDROID_LOG_INFO, "OfflineGGUF",
         "gen-profile prompt=%d reused=%d prefill=%d (%.0f ms) ttft=%.0f ms "
-        "decode=%d calls in %.0f ms (%.1f tok/s) ctx=%d/%d threads=%d batch=%d",
+        "decode=%d calls in %.0f ms (%.1f tok/s) ctx=%d/%d threads=%d/%d batch=%d",
         stats.prompt_tokens, stats.reused_tokens, stats.prefill_tokens,
         stats.prefill_micros / 1000.0, stats.first_token_micros / 1000.0,
         stats.decode_calls, stats.decode_micros / 1000.0,
         stats.decode_micros > 0
             ? stats.tokens_generated * 1e6 / static_cast<double>(stats.decode_micros)
             : 0.0,
-        stats.context_used, stats.n_ctx, stats.n_threads, stats.n_batch);
+        stats.context_used, stats.n_ctx, stats.n_threads, stats.n_threads_batch, stats.n_batch);
 #endif
     return finish(true);
 }

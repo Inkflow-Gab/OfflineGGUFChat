@@ -118,9 +118,10 @@ object LlamaNative {
      * [nativeLastError]); otherwise the stats array laid out as
      * `{tokensGenerated, promptTokens, contextUsed, microseconds, flags,
      * tokenizeµs, prefillµs, firstTokenµs, decodeµs, prefillTokens,
-     * reusedTokens, decodeCalls, nCtx, threads, batch}` where bit 0 of flags
-     * means "context truncated the prompt" and bit 1 means "cancelled by the
-     * user". The tail was appended in 1.5.2; older arrays still parse.
+     * reusedTokens, decodeCalls, nCtx, threads, batch, prefillThreads}` where bit
+     * 0 of flags means "context truncated the prompt" and bit 1 means
+     * "cancelled by the user". Slots were appended in 1.5.2 and 1.6.0; older,
+     * shorter arrays still parse (the missing tail stays 0, never guessed).
      *
      * [ints] and [floats] are positional — see [SamplingParams.toInts].
      */

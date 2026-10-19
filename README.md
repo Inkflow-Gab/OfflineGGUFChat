@@ -145,6 +145,11 @@ holds code, diffs and gauges does not need a fourth visual channel. See
 - Inference runs on the **performance cores**. ggml waits for its slowest worker,
   so putting threads on a 6×A55 cluster makes every matmul finish at little-core
   speed — the app reads the CPU clock bins and keeps workers on the big cluster.
+- Reading the prompt and writing the answer use **different** thread counts.
+  Prompt processing is throughput-bound and takes every spare core; per-token
+  decoding is latency-bound and stays on the big cluster. On a 2+6 phone that
+  is 7 workers for the prompt and 2 for the reply, and both numbers are in
+  Generation details (`threads` shows `2/7`).
 - The whole native engine is built `-O3` (ggml's hot loops are C, not C++), KV
   cache defaults to q8_0 when the phone is tight on RAM, and prompt batches got
   larger so prefill needs fewer decode calls.
