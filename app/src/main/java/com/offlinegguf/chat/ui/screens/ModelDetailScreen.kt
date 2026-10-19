@@ -551,7 +551,7 @@ private fun TuningCard(
             value = tuning.nCtx.toFloat(),
             range = 256f..maxContext.toFloat(),
             steps = ((maxContext - 256) / 256).coerceIn(0, 60),
-            onValue = onContext,
+            onValue = { onContext(it.toInt()) },
             format = { Formats.contextTokens(it.toLong()) },
         )
         SliderRow(
@@ -559,7 +559,7 @@ private fun TuningCard(
             value = tuning.threads.toFloat(),
             range = 1f..8f,
             steps = 6,
-            onValue = onThreads,
+            onValue = { onThreads(it.toInt()) },
             format = { "${it.toInt()}" },
         )
         SliderRow(
@@ -567,7 +567,7 @@ private fun TuningCard(
             value = tuning.batch.toFloat(),
             range = 32f..2048f,
             steps = 15,
-            onValue = onBatch,
+            onValue = { onBatch(it.toInt()) },
             format = { it.toInt().toString() },
         )
         if (engineAvailable) {
@@ -576,7 +576,7 @@ private fun TuningCard(
                 value = tuning.gpuLayers.toFloat(),
                 range = 0f..99f,
                 steps = 98,
-                onValue = onGpuLayers,
+                onValue = { onGpuLayers(it.toInt()) },
                 format = { if (it.toInt() == 0) "cpu only" else "${it.toInt()} layers" },
             )
         }
