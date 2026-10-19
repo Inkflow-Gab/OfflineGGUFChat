@@ -3,8 +3,9 @@
 A quiet, black-and-white Android app for talking to GGUF language models that live
 on your phone. No account, no API key, no phoning home: on-device inference is the
 default and the identity of the app. Since 1.4 there is also an *optional* Cloud
-tab — bring your own free key (OpenRouter, Groq, NVIDIA, OpenCode Zen) — which is
-off until you turn it on, and the only thing in the app that can open a socket.
+tab — bring your own key (free tiers on OpenRouter, Groq and NVIDIA; OpenCode
+Console pay-as-you-go) — which is off until you turn it on, and the only thing
+in the app that can open a socket.
 
 ```
 ┌──────────────────────────────────────┐
@@ -103,16 +104,16 @@ holds code, diffs and gauges does not need a fourth visual channel. See
 
 **Cloud (opt-in, off by default)**
 
-- OpenRouter, Groq, NVIDIA, OpenCode Zen (free staples like Big Pickle and
-  the rotating `*-free` lineup), or any OpenAI-compatible server (llama.cpp /
-  LM Studio / Ollama on your LAN). Paste a free API key, browse the live
+- OpenRouter, Groq, NVIDIA, OpenCode Console, or any OpenAI-compatible server
+  (llama.cpp / LM Studio / Ollama on your LAN). Paste an API key, browse the live
   model list with **FREE badges**, a free-only filter, prices and context
-  sizes, then tap a model to chat with it. Streaming, the thinking channel,
-  stop/continue/regenerate and the transcript all behave exactly like a
-  local model. Keys live in app-private storage, outside the settings
+  sizes, then tap a model to chat with it. OpenCode's free models are labelled
+  **IN-APP ONLY**: they answer 403 outside the OpenCode app by OpenCode's own
+  policy, so the picker hides them by default, explains the refusal if you run
+  one anyway, and points at free providers that do work. Streaming, the
+  thinking channel, stop/continue/regenerate and the transcript all behave
+  exactly like a local model. Keys live in app-private storage, outside the settings
   snapshot, and are sent only to the provider you picked.
-
-**Navigation**
 
 **Workspace + web sandbox (per session)**
 

@@ -26,6 +26,8 @@ data class CloudUiState(
     val notice: String? = null,
     val query: String = "",
     val freeOnly: Boolean = true,
+    /** Show free models that only work inside the provider's own app. */
+    val showAppOnly: Boolean = false,
     val customBaseUrl: String = "",
     val activeTarget: CloudTarget? = null,
 ) {
@@ -37,12 +39,16 @@ data class CloudUiState(
     val visibleModels: List<CloudModel>
         get() = models.filter { model ->
             (!freeOnly || model.isFree) &&
+                (showAppOnly || !model.appOnly) &&
                 (query.isBlank() ||
                     model.displayName.contains(query, ignoreCase = true) ||
                     model.id.contains(query, ignoreCase = true))
         }
 
-    val freeCount: Int get() = models.count { it.isFree }
+    val freeCount: Int get() = models.count { it.isFree && !it.appOnly }
+
+    /** Free models the provider will not serve to this app; badged and hidden by default. */
+    val appOnlyCount: Int get() = models.count { it.appOnly }
 }
 
 /**
@@ -157,6 +163,11 @@ class CloudViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { container.settings.setCloudFreeOnly(value) }
     }
 
+    /** App-only free models stay hidden until the user asks to see them. */
+    fun setShowAppOnly(value: Boolean) {
+        _state.update { it.copy(showAppOnly = value) }
+    }
+
     fun consumeNotice() = _state.update { it.copy(notice = null) }
 
     fun dismissError() = _state.update { it.copy(error = null) }
@@ -182,12 +193,27 @@ class CloudViewModel(private val container: AppContainer) : ViewModel() {
                 apiKey = current.keyDraft.trim(),
             )
             result.onSuccess { models ->
+                // If the selected model turns out to be app-only (for example the
+                // old Zen free lineup), stop pointing the Chat tab at a model that
+                // is guaranteed to refuse, and say why. Nothing worse than a dead
+                // selection that only fails after the user types a question.
+                val stuck = current.activeTarget
+                    ?.takeIf { it.providerId == provider.id }
+                    ?.let { target -> models.firstOrNull { it.id == target.modelId } }
+                    ?.takeIf { it.appOnly }
+                if (stuck != null) container.settings.setCloudTarget(null)
+                val usableFree = models.count { it.isFree && !it.appOnly }
                 _state.update {
                     it.copy(
                         loading = false,
                         models = models,
                         modelsProviderId = provider.id,
-                        notice = "${provider.label}: ${models.size} models, ${models.count { m -> m.isFree }} free.",
+                        notice = if (stuck != null) {
+                            "“${stuck.displayName}” only runs inside ${provider.label}'s own app, " +
+                                "so it was unpicked. Choose another model or a free provider."
+                        } else {
+                            "${provider.label}: ${models.size} models, $usableFree free."
+                        },
                     )
                 }
             }.onFailure { failure ->
@@ -211,7 +237,15 @@ class CloudViewModel(private val container: AppContainer) : ViewModel() {
             container.settings.setCloudTarget(target)
             container.settings.setCloudEnabled(true)
             _state.update {
-                it.copy(notice = "Now chatting with ${model.displayName} via ${current.provider.label}. Open the Chat tab.")
+                it.copy(
+                    notice = if (model.appOnly) {
+                        "“${model.displayName}” only works inside ${current.provider.label}'s own app — " +
+                            "it will be refused here. Pick a paid Zen model, or Groq/OpenRouter/NVIDIA " +
+                            "for free chat."
+                    } else {
+                        "Now chatting with ${model.displayName} via ${current.provider.label}. Open the Chat tab."
+                    },
+                )
             }
         }
     }

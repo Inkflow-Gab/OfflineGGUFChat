@@ -44,7 +44,9 @@ class CloudChatEngine {
         runCatching {
             val base = provider.resolveBaseUrl(customBaseUrl)
             require(base.isNotBlank()) { "Set the server URL first" }
-            val connection = open("$base/models", apiKey, provider)
+            // OpenCode Console publishes its catalog at /inference/v1/models,
+            // not under the OpenAI-compatible chat root.
+            val connection = open(provider.modelsUrl ?: "$base/models", apiKey, provider)
             try {
                 val code = connection.responseCode
                 val body = readBody(connection, code)
@@ -100,7 +102,10 @@ class CloudChatEngine {
                 }
                 val code = connection.responseCode
                 if (code !in 200..299) {
-                    this@callbackFlow.emitFailed(CloudModels.parseError(readBody(connection, code), code))
+                    val body = readBody(connection, code)
+                    this@callbackFlow.emitFailed(
+                        CloudModels.describeFailure(body, code, provider.label, modelId),
+                    )
                     return@launch
                 }
 
@@ -198,11 +203,19 @@ class CloudChatEngine {
         runCatching { send(EngineEvent.Finished(stats, outcome)) }
     }
 
+    private companion object {
+        const val USER_AGENT = "OfflineGGUFChat/1.5 (+https://github.com/Inkflow-Gab/OfflineGGUFChat)"
+    }
+
     private fun open(url: String, apiKey: String, provider: CloudProvider): HttpURLConnection =
         (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 20_000
             readTimeout = 180_000
             setRequestProperty("Content-Type", "application/json")
+            // Identify ourselves honestly. OpenCode's docs ask third-party
+            // agents to send their own user agent rather than pretending to be
+            // the official client — which is exactly what this string does.
+            setRequestProperty("User-Agent", USER_AGENT)
             if (apiKey.isNotBlank()) setRequestProperty("Authorization", "Bearer $apiKey")
             if (provider.id == CloudProvider.OPENROUTER.id) {
                 // Optional attribution headers OpenRouter asks apps to send.

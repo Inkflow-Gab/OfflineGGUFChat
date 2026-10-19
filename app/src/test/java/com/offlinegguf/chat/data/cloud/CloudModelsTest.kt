@@ -131,16 +131,74 @@ class CloudModelsTest {
         assertTrue(models.first { it.id == "mimo-v2.5-free" }.isFree)
         assertTrue(models.first { it.id == "nemotron-3-ultra-free" }.isFree)
         assertFalse(models.first { it.id == "kimi-k2" }.isFree)
+        // Zen's free tier is only served inside the OpenCode app, so free
+        // models are flagged app-only and paid ones are not.
+        assertTrue(models.first { it.id == "big-pickle" }.appOnly)
+        assertTrue(models.first { it.id == "mimo-v2.5-free" }.appOnly)
+        assertFalse(models.first { it.id == "kimi-k2" }.appOnly)
         // Free first, then alphabetical.
         assertEquals("big-pickle", models.first().id)
     }
 
     @Test
-    fun `opencode zen provider speaks the openai dialect`() {
+    fun `zen catalog drops models our chat completions client cannot call`() {
+        val body = """
+            {"data":[
+              {"id":"claude-opus-5-5"},{"id":"gpt-5-nano"},{"id":"gemini-3-flash"},
+              {"id":"grok-4.7"},{"id":"muse-spark-1.3"},{"id":"jev-1.13"},
+              {"id":"qwen3.8-flash"},{"id":"qwen3.7-plus"},
+              {"id":"qwen3.8-max"},{"id":"deepseek-v4.1-flash"},{"id":"minimax-m3"}
+            ]}
+        """.trimIndent()
+        val ids = CloudModels.parseModels(body, "opencode").map { it.id }.toSet()
+        assertEquals(setOf("qwen3.8-max", "deepseek-v4.1-flash", "minimax-m3"), ids)
+        // Other hosts are untouched by the Zen filter.
+        val elsewhere = CloudModels.parseModels(body, "openrouter").map { it.id }.toSet()
+        assertTrue("claude-opus-5-5" in elsewhere)
+    }
+
+    @Test
+    fun `catalog parsing accepts data models and bare arrays`() {
+        assertEquals(1, CloudModels.parseModels("""[{"id":"only"}]""", "custom").size)
+        assertEquals(1, CloudModels.parseModels("""{"models":[{"id":"only"}]}""", "custom").size)
+    }
+
+    @Test
+    fun `free tier refusals become actionable instead of raw http`() {
+        val body = """
+            {"type":"error","error":{"type":"FreeTierError","message":"OpenCode's free tier can only be used from within OpenCode."}}
+        """.trimIndent()
+        val text = CloudModels.describeFailure(body, 403, "OpenCode Zen", "space-bunny-free")
+        assertTrue(text.contains("space-bunny-free"))
+        assertTrue(text.contains("Groq"))
+        assertTrue(text.contains("opencode.ai/console"))
+        assertFalse(text.startsWith("HTTP 403"))
+
+        val credits = CloudModels.describeFailure(
+            """{"error":{"type":"CreditsError","message":"Insufficient account funds"}}""",
+            401,
+            "OpenCode Zen",
+            "minimax-m3",
+        )
+        assertTrue(credits.contains("add credits", ignoreCase = true))
+
+        // Unknown failures keep the provider's own line.
+        assertEquals(
+            "HTTP 500: boom",
+            CloudModels.describeFailure("""{"error":{"message":"boom"}}""", 500, "Groq", "x"),
+        )
+    }
+
+    @Test
+    fun `opencode zen provider uses the documented console endpoints`() {
         val zen = CloudProvider.byId("opencode")
-        assertEquals("https://opencode.ai/zen/v1", zen.resolveBaseUrl(""))
-        assertEquals("https://opencode.ai/auth", zen.keyUrl)
+        // Console's OpenAI-compatible root for other coding agents (the legacy
+        // /zen/v1 root is not the documented integration point any more).
+        assertEquals("https://opencode.ai/inference/openai/v1", zen.resolveBaseUrl(""))
+        assertEquals("https://opencode.ai/inference/v1/models", zen.modelsUrl)
+        assertEquals("https://opencode.ai/console", zen.keyUrl)
         assertTrue(zen.requiresKey)
+        assertTrue(zen.freeTierClientLocked)
     }
 
     @Test

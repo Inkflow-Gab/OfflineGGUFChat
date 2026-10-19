@@ -11,8 +11,10 @@ package com.offlinegguf.chat.data.cloud
  * - **OpenRouter** — one key for hundreds of models, many with `:free` variants.
  * - **Groq** — LPU inference, very fast, generous free tier.
  * - **NVIDIA NIM** — free API credits on build.nvidia.com for most open models.
- * - **OpenCode Zen** — the OpenCode team's curated gateway, with genuinely free
- *   models (`big-pickle`, `*-free`) behind a free key from opencode.ai/auth.
+ * - **OpenCode Zen (Console)** — the OpenCode team's curated gateway. Paid
+ *   models work from any client with a Console key; the free models
+ *   (`big-pickle`, `*-free`) are restricted by OpenCode to their own app, so
+ *   they are shown as app-only instead of pretending otherwise.
  *
  * The last slot is any OpenAI-compatible endpoint the user points at: a
  * llama.cpp server, LM Studio or Ollama on the same Wi-Fi, or another host.
@@ -27,6 +29,14 @@ data class CloudProvider(
     val blurb: String,
     val requiresKey: Boolean = true,
     val custom: Boolean = false,
+    /** Discovery endpoint when it does not live at `$baseUrl/models`. */
+    val modelsUrl: String? = null,
+    /**
+     * True when the host runs free models only for its own official client.
+     * Those models are still listed (behind a toggle) but badged app-only, and
+     * a refusal is explained instead of looking like a broken key.
+     */
+    val freeTierClientLocked: Boolean = false,
 ) {
     /** The API root to actually call; [customBaseUrl] only matters for [CUSTOM]. */
     fun resolveBaseUrl(customBaseUrl: String): String =
@@ -60,10 +70,16 @@ data class CloudProvider(
         val OPENCODE = CloudProvider(
             id = "opencode",
             label = "OpenCode Zen",
-            baseUrl = "https://opencode.ai/zen/v1",
-            keyUrl = "https://opencode.ai/auth",
-            blurb = "The OpenCode team's curated models. Free staples like Big Pickle " +
-                "and the rotating *-free lineup; sign in with GitHub/Google for a key.",
+            // Console's documented OpenAI-compatible endpoint for other coding
+            // agents. Free models still answer 403 FreeTierError here — by
+            // OpenCode's design, not a bug in this app.
+            baseUrl = "https://opencode.ai/inference/openai/v1",
+            modelsUrl = "https://opencode.ai/inference/v1/models",
+            keyUrl = "https://opencode.ai/console",
+            blurb = "The OpenCode team's curated gateway. Paid models work here with a " +
+                "Console key and credits; OpenCode restricts its free models to the " +
+                "OpenCode app itself.",
+            freeTierClientLocked = true,
         )
 
         val CUSTOM = CloudProvider(
@@ -99,6 +115,12 @@ data class CloudModel(
     val completionPrice: Double? = null,
     /** Free to call with a personal key (zero price, `:free` id, or free-tier host). */
     val isFree: Boolean = false,
+    /**
+     * Free only inside the provider's own app. OpenCode Zen blocks its free
+     * tier for third-party clients, so these are listed with an honest badge
+     * and hidden behind a toggle rather than offered as if they worked.
+     */
+    val appOnly: Boolean = false,
 ) {
     val displayName: String get() = name.ifBlank { id }
 
