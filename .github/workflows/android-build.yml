@@ -26,6 +26,9 @@ jobs:
   native:
     name: Native checks
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -36,12 +39,35 @@ jobs:
           java-version: '17'
 
       - name: Run host C++ checks
-        run: ./scripts/check-native.sh
+        shell: bash
+        run: ./scripts/check-native.sh 2>&1 | tee build.log
+
+      # Runner logs are awkward to reach from a sandbox or a phone, so a failing
+      # build also leaves its compiler/test errors on the pull request itself.
+      - name: Post the failure digest to the pull request
+        if: failure() && github.event_name == 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '### `check-native.sh` failed'
+            echo
+            echo '```'
+            grep -E '^e: |^w: .*error|error: |^> Task .*FAILED|FAILED$|FAILURE:|AssertionError|expected:|Caused by:|What went wrong' \
+              build.log | head -100 || true
+            echo '```'
+            
+          } > digest.md
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file digest.md
 
   # ----------------------------------------------------------------- tests
   unit-tests:
     name: Kotlin unit tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -62,7 +88,8 @@ jobs:
             "ndk;25.2.9519653" "cmake;3.22.1" > /dev/null
 
       - name: Run unit tests
-        run: ./gradlew testDebugUnitTest --stacktrace
+        shell: bash
+        run: ./gradlew testDebugUnitTest --stacktrace 2>&1 | tee build.log
 
       - name: Upload test reports
         if: always()
@@ -73,11 +100,33 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      # Runner logs are awkward to reach from a sandbox or a phone, so a failing
+      # build also leaves its compiler/test errors on the pull request itself.
+      - name: Post the failure digest to the pull request
+        if: failure() && github.event_name == 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '### `testDebugUnitTest` failed'
+            echo
+            echo '```'
+            grep -E '^e: |^w: .*error|error: |^> Task .*FAILED|FAILED$|FAILURE:|AssertionError|expected:|Caused by:|What went wrong' \
+              build.log | head -100 || true
+            echo '```'
+            
+          } > digest.md
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file digest.md
+
   # ------------------------------------------------------------------ apks
   apk:
     name: Debug + release APKs
     runs-on: ubuntu-latest
     needs: [ native, unit-tests ]
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -97,7 +146,8 @@ jobs:
             "ndk;25.2.9519653" "cmake;3.22.1" > /dev/null
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace -Pofflinegguf.abis=arm64-v8a
+        shell: bash
+        run: ./gradlew assembleDebug --stacktrace -Pofflinegguf.abis=arm64-v8a 2>&1 | tee build.log
 
       - name: Build release APK
         # Without keystore secrets the release APK is signed with the debug key,
@@ -107,7 +157,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --stacktrace -Pofflinegguf.abis=arm64-v8a
+        run: ./gradlew assembleRelease --stacktrace -Pofflinegguf.abis=arm64-v8a 2>&1 | tee -a build.log
 
       - name: Collect and rename APKs
         run: |
@@ -125,6 +175,25 @@ jobs:
           path: dist/*.apk
           if-no-files-found: error
           retention-days: 30
+
+      # Runner logs are awkward to reach from a sandbox or a phone, so a failing
+      # build also leaves its compiler/test errors on the pull request itself.
+      - name: Post the failure digest to the pull request
+        if: failure() && github.event_name == 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '### `assembleDebug` failed'
+            echo
+            echo '```'
+            grep -E '^e: |^w: .*error|error: |^> Task .*FAILED|FAILED$|FAILURE:|AssertionError|expected:|Caused by:|What went wrong' \
+              build.log | head -100 || true
+            echo '```'
+            
+          } > digest.md
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file digest.md
 
   # -------------------------------------------------------------- release
   # Pushes a v* tag and the same APKs become a GitHub Release.
