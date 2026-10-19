@@ -149,6 +149,11 @@ class GgufReader(
         var multimodal = false
         var alignmentSeen = 0L
         var truncated = false
+        // Id of a value type outside the 13 GGUF defines; -1 when every type
+        // we met was one we know. Unlike a truncation this is never recoverable:
+        // we cannot tell how wide the value was, so the rest of the header is
+        // unreadable rather than merely unfinished.
+        var badTypeId = -1
 
         val metadata = LinkedHashMap<String, GgufValue>()
 
@@ -158,9 +163,14 @@ class GgufReader(
                 truncated = true
                 break
             }
-            val type = GgufType.fromId(r.u32().toInt())
-            if (!r.ok() || type == null) {
+            val typeId = r.u32().toInt()
+            if (!r.ok()) {
                 truncated = true
+                break
+            }
+            val type = GgufType.fromId(typeId)
+            if (type == null) {
+                badTypeId = typeId
                 break
             }
             // Stop rather than walk hundreds of megabytes of vocab on a phone.
@@ -215,6 +225,12 @@ class GgufReader(
         if (alignment <= 0L || alignment and (alignment - 1) != 0L) alignment = DEFAULT_ALIGNMENT
 
         // ---- tensor info table ----
+        // Only reachable when the KV walk finished: the table starts exactly
+        // where the last KV pair ended, so a walk that stopped early (read
+        // budget, or a cut file) leaves the pointer somewhere inside the
+        // metadata. Parsing "tensors" from there invents a table that is not
+        // there and reports a good file as a broken download.
+        val tableReadable = !truncated && badTypeId < 0
         val tensorTableStart = r.position
         val dtypeHistogram = HashMap<Int, Long>()
         val tensorDtypes = ArrayList<Pair<String, Int>>(min(nTensors.toInt(), 64))
@@ -222,7 +238,8 @@ class GgufReader(
         var weightBytes = 0L
         var tensorsTruncated = false
 
-        for (i in 0 until nTensors) {
+        val tableEntries = if (tableReadable) nTensors else 0L
+        for (i in 0 until tableEntries) {
             val tensorName = r.string(version)
             if (!r.ok()) {
                 tensorsTruncated = true
@@ -268,16 +285,17 @@ class GgufReader(
 
         var dataStart = 0L
         var tensorTableBytes = 0L
-        if (!tensorsTruncated) {
+        if (!tensorsTruncated && tableReadable) {
             val headerEnd = r.position
             dataStart = alignUp(headerEnd, alignment)
             tensorTableBytes = headerEnd - tensorTableStart
         }
 
         val elapsed = millisSince(started)
-        val ok = !truncated && !tensorsTruncated && nTensors > 0
+        val ok = !truncated && !tensorsTruncated && badTypeId < 0 && nTensors > 0
         val error = when {
             tensorsTruncated -> "tensor table truncated or unreadable (partial download?)"
+            badTypeId >= 0 -> "unsupported GGUF value type (id $badTypeId)"
             truncated -> "metadata section exceeds read budget; partial header"
             nTensors == 0L -> "no tensors"
             else -> null
@@ -380,9 +398,8 @@ class GgufReader(
             GgufType.INT64 -> GgufValue.Integer(r.i64(), type)
             GgufType.FLOAT32 -> GgufValue.Real(r.f32().toDouble(), type)
             GgufType.FLOAT64 -> GgufValue.Real(r.f64(), type)
-            GgufType.BOOL -> GgufValue.Flag(r.i32() != 0)
+            GgufType.BOOL -> GgufValue.Flag(r.u8() != 0)
             GgufType.STRING -> if (r.ok()) GgufValue.Text(r.string(version)) else null
-            GgufType.UINT128, GgufType.INT128 -> if (r.skip(16)) GgufValue.Skipped(type, 16) else null
             GgufType.ARRAY -> readArray(r, version, depth)
         }
         return value?.takeIf { r.ok() }
@@ -408,7 +425,7 @@ class GgufReader(
                         GgufType.INT32 -> r.i32().toLong()
                         GgufType.UINT64 -> r.u64()
                         GgufType.INT64 -> r.i64()
-                        GgufType.BOOL -> if (r.i32() != 0) 1L else 0L
+                        GgufType.BOOL -> if (r.u8() != 0) 1L else 0L
                         else -> {
                             r.skip(scalar)
                             0L

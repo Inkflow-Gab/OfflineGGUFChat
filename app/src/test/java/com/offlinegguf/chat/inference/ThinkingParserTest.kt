@@ -44,7 +44,8 @@ class ThinkingParserTest {
         val parser = ThinkingParser()
         val first = parser.offer("answer so far<thi")
         assertEquals("answer so far", first.answer)
-        assertEquals(3, parser.pending)
+        // "<thi" — four characters held back as a possible marker prefix.
+        assertEquals(4, parser.pending)
 
         val second = parser.offer("nk>the plan</think>done")
         assertEquals("the plan", second.thinking)

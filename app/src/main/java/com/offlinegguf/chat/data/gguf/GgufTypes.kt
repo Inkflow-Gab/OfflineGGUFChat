@@ -19,9 +19,10 @@ enum class GgufType(val id: Int) {
     ARRAY(9),
     UINT64(10),
     INT64(11),
-    FLOAT64(12),
-    UINT128(13),
-    INT128(14);
+    FLOAT64(12);
+    // GGUF defines exactly these 13 value types; llama.cpp static_asserts
+    // GGUF_TYPE_COUNT == 13. An id at or above 13 is a corrupt or hostile
+    // header, not a wider integer to step over.
 
     val isIntegral: Boolean
         get() = this == UINT8 || this == INT8 || this == UINT16 || this == INT16 ||
@@ -33,11 +34,11 @@ enum class GgufType(val id: Int) {
     /** Fixed on-disk size, or 0 when the value is variable length (string/array). */
     val scalarBytes: Int
         get() = when (this) {
-            UINT8, INT8 -> 1
+            // A bool is one byte on disk (llama.cpp sizes it as int8_t).
+            UINT8, INT8, BOOL -> 1
             UINT16, INT16 -> 2
-            UINT32, INT32, FLOAT32, BOOL -> 4
+            UINT32, INT32, FLOAT32 -> 4
             UINT64, INT64, FLOAT64 -> 8
-            UINT128, INT128 -> 16
             else -> 0
         }
 
@@ -122,9 +123,6 @@ sealed class GgufValue {
         val strings: List<String>?,
     ) : GgufValue()
 
-    /** A value we recognised but deliberately did not decode. */
-    data class Skipped(val type: GgufType, val bytes: Long) : GgufValue()
-
     val typeName: String
         get() = when (this) {
             is Integer -> type.name.lowercase()
@@ -132,7 +130,6 @@ sealed class GgufValue {
             is Flag -> "bool"
             is Text -> "string"
             is Items -> "array<" + elementType.name.lowercase() + ">"
-            is Skipped -> type.name.lowercase()
         }
 
     fun asLongOrNull(): Long? = when (this) {
@@ -172,7 +169,6 @@ sealed class GgufValue {
                 }
                 "[$length of ${elementType.name.lowercase()}${if (preview.isEmpty()) "" else ": $preview"}]"
             }
-            is Skipped -> "<${bytes}B ${type.name.lowercase()}>"
         }
         return if (raw.length <= truncateAt) raw else raw.take(truncateAt) + "…"
     }

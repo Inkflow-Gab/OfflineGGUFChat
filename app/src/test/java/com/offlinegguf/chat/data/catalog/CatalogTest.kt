@@ -269,8 +269,10 @@ class CatalogTest {
         assertEquals(2, parsed.entries.size)
         assertEquals("a", parsed.entries[0].id)
         assertEquals(100L, parsed.entries[0].approxSizeBytes)
-        // Everything absent from the JSON takes its default.
-        assertEquals(50, parsed.entries[0].qualityScore)
+        // A value the JSON does carry wins over the default...
+        assertEquals(10, parsed.entries[0].qualityScore)
+        // ...and everything absent from it takes the default.
+        assertEquals(50, parsed.entries[1].qualityScore)
         assertEquals(4096, parsed.entries[0].contextLength)
         assertFalse(parsed.entries[0].uncensored)
         assertTrue(parsed.entries[1].uncensored)

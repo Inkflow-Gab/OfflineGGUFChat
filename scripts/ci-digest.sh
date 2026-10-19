@@ -22,7 +22,7 @@ marker='<!-- offlinegguf-ci-digest -->'
 ERROR_RE='^e: '
 # Everything else worth showing: task failures, Gradle's summary, C/C++ compiler
 # errors, JVM assertion output, and the native test harness.
-CONTEXT_RE='error: |^> Task .*FAILED|FAILURE:|AssertionError|expected:|Caused by:|What went wrong|A problem occurred|\[ FAILED \]'
+CONTEXT_RE='error: |FAILED$|FAILURE:|AssertionError|AssertionFailedError|ComparisonFailure|expected:|but was:|Caused by:|What went wrong|A problem occurred|There were failing tests'
 
 if [ ! -f "$log" ]; then
   echo "ci-digest: nothing to summarise, $log is missing" >&2

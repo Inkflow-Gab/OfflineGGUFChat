@@ -120,7 +120,8 @@ class ModelFitTest {
         assertEquals(131072, ModelFit.kvBytesPerToken(spec()))
         // q8_0 is 1.0625 bytes per value instead of 2.
         assertEquals(69632, ModelFit.kvBytesPerToken(spec(), "q8_0"))
-        assertEquals(34816, ModelFit.kvBytesPerToken(spec(), "q4_0"))
+        // q4_0 packs 32 values into 18 bytes, so 0.5625 per value: 2 * 32 * 1024 * 0.5625.
+        assertEquals(36864, ModelFit.kvBytesPerToken(spec(), "q4_0"))
         // An unknown cache type falls back to f16 rather than guessing small.
         assertEquals(131072, ModelFit.kvBytesPerToken(spec(), "nonsense"))
     }

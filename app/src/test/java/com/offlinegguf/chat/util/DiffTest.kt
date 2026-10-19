@@ -71,7 +71,8 @@ class DiffTest {
 
         assertEquals(1, result.added)
         assertEquals(1, result.removed)
-        assertEquals(10, result.unchanged)
+        // Ten lines on each side, one of them rewritten: nine survive as context.
+        assertEquals(9, result.unchanged)
 
         val gaps = result.rows.filterIsInstance<LineDiffer.Row.Gap>()
         assertEquals(2, gaps.size)
@@ -223,7 +224,13 @@ class DiffTest {
         assertEquals(2, parsed.hunks)
         assertEquals(2, parsed.added)
         assertEquals(2, parsed.removed)
-        assertEquals(40, parsed.entries.last().oldNumber)
+        // The second hunk restarts numbering at 40 on both sides. An addition has
+        // no old-side number, so the old-side check belongs to the removal.
+        val lastRemoved = parsed.entries.last { it.kind == LineDiffer.Kind.REMOVED }
+        assertEquals("forty", lastRemoved.text)
+        assertEquals(40, lastRemoved.oldNumber)
+        assertEquals(0, parsed.entries.last().oldNumber)
+        assertEquals(40, parsed.entries.last().newNumber)
     }
 
     @Test

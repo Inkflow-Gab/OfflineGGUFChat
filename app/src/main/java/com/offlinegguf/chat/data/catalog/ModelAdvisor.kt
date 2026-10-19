@@ -57,10 +57,17 @@ object ModelAdvisor {
         if (catalog.isEmpty()) return emptyList()
 
         val usable = catalog.filter { it.approxSizeBytes <= prefs.maxDownloadBytes }
-        val styleMatched = usable.filter { styleMatches(it, prefs) }
+        val styleMatched = usable.filter { it.matchesStyle(prefs) }
         // Nothing matches the filter exactly? Fall back to the whole set rather
         // than showing an empty screen — ranked lower by the style term anyway.
-        val pool = if (styleMatched.isNotEmpty()) styleMatched else usable.ifEmpty { catalog }
+        // Refusal-free is the one filter with no fallback: handing back a
+        // filtered model under a "refusal-free only" toggle is a wrong answer,
+        // not a helpful one, so an empty shortlist is the honest result.
+        val pool = when {
+            styleMatched.isNotEmpty() -> styleMatched
+            prefs.uncensored || prefs.style == ModelStyle.UNCENSORED -> styleMatched
+            else -> usable.ifEmpty { catalog }
+        }
 
         val scored = pool.map { model ->
             val assessment = assess(profile, model, prefs)
@@ -115,12 +122,6 @@ object ModelAdvisor {
                 storageFreeBytes = profile.freeStorageBytes,
             ),
         )
-    }
-
-    private fun styleMatches(model: CatalogModel, prefs: Prefs): Boolean {
-        if (prefs.uncensored && !model.uncensored) return false
-        if (prefs.style == ModelStyle.UNCENSORED) return model.uncensored
-        return model.style.isEmpty() || model.hasStyle(prefs.style.id) || model.hasStyle(ModelStyle.GENERAL.id)
     }
 
     private fun score(

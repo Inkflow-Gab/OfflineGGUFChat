@@ -188,6 +188,7 @@ uint64_t ScalarBytes(GgufType t) {
     switch (t) {
         case GgufType::kUint8:
         case GgufType::kInt8:
+        case GgufType::kBool:  // one byte on disk, as llama.cpp sizes it
             return 1;
         case GgufType::kUint16:
         case GgufType::kInt16:
@@ -195,22 +196,18 @@ uint64_t ScalarBytes(GgufType t) {
         case GgufType::kUint32:
         case GgufType::kInt32:
         case GgufType::kFloat32:
-        case GgufType::kBool:
             return 4;
         case GgufType::kUint64:
         case GgufType::kInt64:
         case GgufType::kFloat64:
             return 8;
-        case GgufType::kUint128:
-        case GgufType::kInt128:
-            return 16;
         default:
             return 0;  // caller handles string / array
     }
 }
 
-// Returns false when the stream went bad; `supported` is false for types we
-// intentionally do not materialise (128-bit ints).
+// Returns false when the stream went bad or the type is one GGUF does not
+// define (ids at or above kTypeCount fall through to the default branch).
 bool ReadValue(Reader &r, int version, GgufType type, GgufValue *out, uint64_t depth) {
     out->type = type;
     switch (type) {
@@ -224,12 +221,8 @@ bool ReadValue(Reader &r, int version, GgufType type, GgufValue *out, uint64_t d
         case GgufType::kInt64:  out->i = r.I64(); return true;
         case GgufType::kFloat32: out->d = r.F32(); return true;
         case GgufType::kFloat64: out->d = r.F64(); return true;
-        case GgufType::kBool:   out->bool_value = r.I32() != 0; return true;
+        case GgufType::kBool:   out->bool_value = r.U8() != 0; return true;
         case GgufType::kString: return r.String(&out->s, version);
-        case GgufType::kUint128:
-        case GgufType::kInt128:
-            out->type = GgufType::kUint128;
-            return r.SkipBytes(16);
         case GgufType::kArray: {
             const auto elem = static_cast<GgufType>(r.U32());
             const uint64_t len = r.U64();
@@ -428,11 +421,19 @@ GgufProbeResult ProbeGguf(const std::string &path, size_t metadata_budget_bytes)
             truncated = true;
             break;
         }
-        const auto type = static_cast<GgufType>(r.U32());
+        const uint32_t type_id = r.U32();
         if (!r.ok()) {
             truncated = true;
             break;
         }
+        if (type_id >= static_cast<uint32_t>(GgufType::kTypeCount)) {
+            // Unlike a truncation this cannot be reported as "partial": the
+            // width of the value is unknown, so nothing after it can be read.
+            res.error = "unsupported GGUF value type (id " + std::to_string(type_id) + ")";
+            std::fclose(f);
+            return res;
+        }
+        const auto type = static_cast<GgufType>(type_id);
         const long pos_after_type = ftell(f);
         if (pos_after_type < 0) {
             truncated = true;
@@ -464,6 +465,12 @@ GgufProbeResult ProbeGguf(const std::string &path, size_t metadata_budget_bytes)
     }
 
     // ---- tensor info table ----
+    // Only reachable when the KV walk finished: the table starts exactly where
+    // the last KV pair ended, so a walk that stopped early (read budget, or a
+    // cut file) leaves the pointer inside the metadata. Parsing "tensors" from
+    // there invents a table that is not there and reports a good file as a
+    // broken download.
+    const bool table_readable = !truncated;
     const uint64_t tensor_table_start = static_cast<uint64_t>(ftell(f));
     std::vector<uint32_t> dtypes;
     dtypes.reserve(static_cast<size_t>(std::min<uint64_t>(res.n_tensors, 65536)));
@@ -471,7 +478,8 @@ GgufProbeResult ProbeGguf(const std::string &path, size_t metadata_budget_bytes)
     uint64_t weight_bytes = 0;
     bool tensors_truncated = false;
 
-    for (uint64_t i = 0; i < res.n_tensors; ++i) {
+    const uint64_t table_entries = table_readable ? res.n_tensors : 0;
+    for (uint64_t i = 0; i < table_entries; ++i) {
         std::string tname;
         if (!r.String(&tname, version)) {
             tensors_truncated = true;
@@ -538,7 +546,7 @@ GgufProbeResult ProbeGguf(const std::string &path, size_t metadata_budget_bytes)
     // tensors parsed" is the single most useful thing to tell a user whose
     // download stopped halfway, so it must not be thrown away here.
     res.tensor_count_seen = static_cast<uint64_t>(dtypes.size());
-    if (!tensors_truncated) {
+    if (!tensors_truncated && table_readable) {
         const long header_end_raw = ftell(f);
         if (header_end_raw >= 0) {
             const uint64_t header_end = static_cast<uint64_t>(header_end_raw);

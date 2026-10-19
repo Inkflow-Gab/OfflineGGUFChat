@@ -220,6 +220,18 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
 }
 
+// A failing test has to name itself on the console. CI reads stdout, and the
+// HTML/XML reports live on a host that is not always reachable from a sandbox.
+tasks.withType(org.gradle.api.tasks.testing.Test::class.java).configureEach {
+    testLogging {
+        events("failed", "skipped")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showCauses = true
+        showExceptions = true
+        showStackTraces = false
+    }
+}
+
 // Surfaces the effective native-engine configuration on every build so a CI
 // log tells you *why* inference is or isn't available.
 val printEngineConfig = tasks.register("engineConfig") {

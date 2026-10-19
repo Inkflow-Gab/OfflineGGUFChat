@@ -28,8 +28,10 @@ enum class GgufType : uint32_t {
     kUint64 = 10,
     kInt64 = 11,
     kFloat64 = 12,
-    kUint128 = 13,
-    kInt128 = 14,
+    // GGUF defines exactly these 13 value types; llama.cpp static_asserts
+    // GGUF_TYPE_COUNT == 13. An id at or above kTypeCount is a corrupt or
+    // hostile header, not a wider integer to step over.
+    kTypeCount = 13,
 };
 
 // One metadata entry, kept in a deliberately small typed subset. Arrays are

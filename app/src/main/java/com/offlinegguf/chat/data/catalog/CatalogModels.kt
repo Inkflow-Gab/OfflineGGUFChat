@@ -56,13 +56,28 @@ data class CatalogModel(
 
     fun hasStyle(styleId: String): Boolean = style.contains(styleId)
 
-    /** Whether this entry belongs in a result set built from [prefs]. */
-    fun matches(prefs: ModelAdvisor.Prefs): Boolean {
+    /**
+     * Whether this entry belongs in a result set built from [prefs], ignoring the
+     * download cap.
+     *
+     * This is the single implementation of the preference filter: [matches] adds
+     * the cap on top and [ModelAdvisor] ranks whatever this lets through. Two
+     * copies of these rules existed and drifted apart, and the difference showed
+     * up as a shortlist that dropped models the user had not filtered out.
+     */
+    fun matchesStyle(prefs: ModelAdvisor.Prefs): Boolean {
         if (prefs.uncensored && !uncensored) return false
-        if (!prefs.uncensored && prefs.style == ModelStyle.UNCENSORED && !uncensored) return false
-        if (prefs.style != ModelStyle.UNCENSORED && !hasStyle(prefs.style.id) && style.isNotEmpty()) return false
-        return approxSizeBytes <= prefs.maxDownloadBytes
+        if (prefs.style == ModelStyle.UNCENSORED) return uncensored
+        // GENERAL is the default and it means "no preference" — not a style an
+        // entry has to advertise. Filtering on it literally would drop every row
+        // that says what the model is actually good at.
+        if (prefs.style == ModelStyle.GENERAL) return true
+        return style.isEmpty() || hasStyle(prefs.style.id) || hasStyle(ModelStyle.GENERAL.id)
     }
+
+    /** [matchesStyle] plus the download cap. */
+    fun matches(prefs: ModelAdvisor.Prefs): Boolean =
+        matchesStyle(prefs) && approxSizeBytes <= prefs.maxDownloadBytes
 
     private fun encode(value: String): String =
         URLEncoder.encode(value, "UTF-8").replace("+", "%20")

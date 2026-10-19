@@ -82,7 +82,7 @@ public:
     void KvBool(const std::string &k, bool v) {
         Str(k);
         U32(7);  // GGUF_TYPE_BOOL
-        I32(v ? 1 : 0);
+        U8(v ? 1 : 0);  // one byte, exactly as llama.cpp writes it
     }
     void KvStringArray(const std::string &k, const std::vector<std::string> &v) {
         Str(k);
