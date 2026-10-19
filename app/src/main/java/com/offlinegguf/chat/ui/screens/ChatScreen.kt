@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -58,6 +60,7 @@ import com.offlinegguf.chat.data.settings.ChatMode
 import com.offlinegguf.chat.ui.components.ContextGauge
 import com.offlinegguf.chat.ui.components.EmptyState
 import com.offlinegguf.chat.ui.components.InkButton
+import com.offlinegguf.chat.ui.components.InkChip
 import com.offlinegguf.chat.ui.components.InkIconButton
 import com.offlinegguf.chat.ui.components.InkTopBar
 import com.offlinegguf.chat.ui.components.InputBar
@@ -66,7 +69,9 @@ import com.offlinegguf.chat.ui.components.SectionTitle
 import com.offlinegguf.chat.ui.theme.OfflineGgufTheme
 import com.offlinegguf.chat.util.Formats
 import com.offlinegguf.chat.viewmodel.ChatViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The transcript.
@@ -102,9 +107,27 @@ fun ChatScreen(
     var menuOpen by remember { mutableStateOf(false) }
     var modeMenuOpen by remember { mutableStateOf(false) }
     var showGauge by remember { mutableStateOf(false) }
+    var pendingCodeSave by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { viewModel.attach(it) }
+    }
+    val saveCodeFile = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        val pending = pendingCodeSave
+        pendingCodeSave = null
+        if (uri != null && pending != null) {
+            scope.launch {
+                val saved = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val output = context.contentResolver.openOutputStream(uri)
+                            ?: error("Could not open the destination file")
+                        output.use { it.write(pending.first.toByteArray(Charsets.UTF_8)) }
+                    }
+                }
+                saved.onSuccess { viewModel.reportNotice("Saved ${pending.second}") }
+                    .onFailure { viewModel.reportError(it.message ?: "Could not save the code file") }
+            }
+        }
     }
 
     // Follow the answer while it streams, unless the user scrolled back to read.
@@ -329,12 +352,34 @@ fun ChatScreen(
 
                 if (!state.showEngineOnboarding && state.messages.isEmpty()) {
                     item(key = "empty") {
-                        EmptyState(
-                            icon = R.drawable.ic_chat,
-                            title = "Nothing here yet",
-                            body = "Everything runs on this phone. No account, no upload, no network — " +
-                                "and if you turn the radio off it works exactly the same.",
-                        )
+                        Column {
+                            EmptyState(
+                                icon = R.drawable.ic_chat,
+                                title = when (settings.chatMode) {
+                                    ChatMode.FAST -> "Quick answers, right here"
+                                    ChatMode.CHAT -> "Start a conversation"
+                                    ChatMode.CODING -> "What are we building?"
+                                    ChatMode.CAREFUL -> "Let’s work through it carefully"
+                                    ChatMode.BALANCED -> "A private chat, on your terms"
+                                },
+                                body = "Runs on this phone. No account, no upload, no network. " +
+                                    "Choose a starter or write your own prompt.",
+                            )
+                            Text(
+                                text = "QUICK START · ${settings.chatMode.label.uppercase()}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = colors.tertiary,
+                                modifier = Modifier.padding(start = spacing.md, bottom = spacing.xs),
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                            ) {
+                                quickStarters(settings.chatMode).forEach { starter ->
+                                    InkChip(text = starter, onClick = { viewModel.onInputChange(starter) })
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -367,6 +412,10 @@ fun ChatScreen(
                         onRegenerate = { viewModel.regenerate() },
                         canContinue = state.continuableMessageId == message.id,
                         onContinue = { viewModel.continueMessage(message.id) },
+                        onSaveCode = { code, fileName ->
+                            pendingCodeSave = code to fileName
+                            saveCodeFile.launch(fileName)
+                        },
                         onEdit = { viewModel.startEditing(message.id, message.content) },
                         onDeleteFrom = { viewModel.deleteFrom(message.id) },
                     )
@@ -442,6 +491,14 @@ fun ChatScreen(
             },
         )
     }
+}
+
+private fun quickStarters(mode: ChatMode): List<String> = when (mode) {
+    ChatMode.FAST -> listOf("Summarize this", "Explain in one line", "Give me the key point")
+    ChatMode.CHAT -> listOf("Help me brainstorm", "Tell me a short story", "Let’s explore an idea")
+    ChatMode.CODING -> listOf("Write a Python script", "Explain this error", "Review my code")
+    ChatMode.CAREFUL -> listOf("Check my reasoning", "Compare these options", "Explain step by step")
+    ChatMode.BALANCED -> listOf("Explain a topic simply", "Help me write", "Brainstorm ideas")
 }
 
 /** Inline banner; a snackbar would fight the composer for the bottom of the screen. */

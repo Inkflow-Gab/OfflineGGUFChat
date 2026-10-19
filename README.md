@@ -66,13 +66,17 @@ holds code, diffs and gauges does not need a fourth visual channel. See
   model answers with a patch, or when you regenerate and compare, changed lines
   are marked with `+` / `−`, gutter-marked and tinted rather than coloured.
   Fenced blocks can show a filename, language, line count and one-tap copy;
-  blocks over 50 lines collapse into a compact file-style panel.
+  blocks over 50 lines collapse into a compact file-style panel, with copy and
+  Android's document picker for saving snippets as files.
 - **Per-message like counts.** Every message carries a ♥ with a count; the
   conversation caches its totals, and the top bar shows the running sum. A
   second flag marks "not helpful", which is kept separately from a like.
 - Long answers can continue in bounded chunks with one tap, reusing the same
   assistant message. There is no app-wide total-output cap; each pass is bounded
-  by the model's context and phone memory. Stop mid-generation, regenerate from
+  by the model's context and phone memory.
+- Long conversations are windowed before tokenization to keep prompt evaluation
+  bounded. The app keeps the complete transcript in local storage and tells you
+  when older turns or part of an oversized newest turn were omitted from a prompt. Stop mid-generation, regenerate from
   any point, edit and resend, pin conversations, search history, export as Markdown or JSON.
 - Nine built-in *skills* — prompt + GBNF grammar pairs such as `code-reply`,
   `patch-mode`, `json-extract`, `summarize`, `no-refusals` — editable in-app,

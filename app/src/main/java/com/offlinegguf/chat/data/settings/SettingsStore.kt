@@ -23,7 +23,7 @@ enum class ChatMode(val label: String, val instruction: String) {
     FAST("Fast", "Give the shortest useful answer first. Skip background unless requested, and avoid repeating the question."),
     CHAT("Chat", "Use a natural, warm conversational style. Keep the exchange engaging without inventing personal experiences or facts."),
     CODING("Coding", "Act as a careful coding partner. Give runnable, maintainable code, preserve the user's conventions, and explain important assumptions or risks. For complete files of 50 or more lines, include the filename in the opening code fence, for example ```python main.py. Never claim code was tested unless it was."),
-    CAREFUL("Deep thinking", "Prioritize correctness over speed. Check the request for ambiguity, reason through relevant constraints, and present a concise conclusion with uncertainty clearly stated.");
+    CAREFUL("Deep thinking", "Prioritize correctness over speed. Check the request for ambiguity and verify arithmetic, dates, and code logic where practical. Separate facts from assumptions, never invent citations or test results, and state uncertainty plainly. Give the concise conclusion first; add only a brief rationale, not hidden chain-of-thought.");
 
     companion object {
         fun fromName(name: String?): ChatMode = values().firstOrNull { it.name.equals(name, ignoreCase = true) } ?: BALANCED
@@ -82,7 +82,9 @@ data class AppSettings(
         const val DEFAULT_SYSTEM_PROMPT =
             "You are a concise, practical assistant running entirely on this device. " +
                 "Answer directly, prefer short paragraphs and lists, and put code in fenced blocks. " +
-                "If you are unsure, say so."
+                "Use the supplied conversation as evidence; do not invent facts, citations, APIs, " +
+                "or test results. Separate facts from assumptions and say when you are unsure. " +
+                "You have no live web access."
 
         const val DEFAULT_MAX_DOWNLOAD_BYTES = 8L * 1024 * 1024 * 1024
     }

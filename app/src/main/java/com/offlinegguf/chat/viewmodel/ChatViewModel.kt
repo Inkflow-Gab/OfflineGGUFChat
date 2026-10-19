@@ -24,6 +24,7 @@ import com.offlinegguf.chat.inference.GenerationOutcome
 import com.offlinegguf.chat.inference.GenerationStats
 import com.offlinegguf.chat.inference.LoadRequest
 import com.offlinegguf.chat.inference.PromptFormatter
+import com.offlinegguf.chat.inference.PromptWindow
 import com.offlinegguf.chat.inference.SamplingParams
 import com.offlinegguf.chat.inference.StreamCoalescer
 import com.offlinegguf.chat.inference.TemplateStyle
@@ -270,8 +271,10 @@ class ChatViewModel(
 
     fun consumeNotice() = _state.update { it.copy(notice = null) }
 
-    /** For failures the UI hits directly, such as an export nothing can receive. */
+    /** For failures or successes the UI hits directly, such as code-file export. */
     fun reportError(message: String) = _state.update { it.copy(error = message) }
+
+    fun reportNotice(message: String) = _state.update { it.copy(notice = message) }
 
     fun dismissError() = _state.update { it.copy(error = null) }
 
@@ -536,11 +539,27 @@ class ChatViewModel(
                 .filter { (it.role == Roles.USER || it.role == Roles.ASSISTANT) && it.content.isNotBlank() }
                 .map { ChatTurn(it.role, it.content) }
 
+            val settings = snapshot.settings
+            val sampling = samplingFor(model, skill, settings)
+            val system = systemPromptFor(skill)
+            val promptContext = snapshot.contextSize.takeIf { it > 0 }
+                ?: model.nCtx.takeIf { it > 0 }
+                ?: container.deviceProfile.suggestedContext
+            val window = PromptWindow.fit(system, turns, promptContext, sampling.maxTokens)
             val prompt = PromptFormatter.render(
                 style = snapshot.templateStyle,
-                system = systemPromptFor(skill),
-                turns = turns,
+                system = system,
+                turns = window.turns,
             )
+            val windowNotice = when {
+                window.droppedTurns > 0 && window.clippedLatestTurn ->
+                    "Using recent turns; older chat and part of the newest turn are omitted to fit this model's context. The full transcript is saved."
+                window.droppedTurns > 0 ->
+                    "Using the ${window.turns.size} most recent turns to keep prompt evaluation fast. The full transcript is saved."
+                window.clippedLatestTurn ->
+                    "Part of the newest turn was omitted to fit this model's context. The full transcript is saved."
+                else -> null
+            }
 
             val assistantId = existingMessageId ?: chat.startAssistant(
                 conversationId = conversationId,
@@ -549,7 +568,6 @@ class ChatViewModel(
             )
             if (existingMessageId != null) chat.resumeAssistant(existingMessageId)
 
-            val settings = snapshot.settings
             // Render short batches about 10 times a second: visibly progressive
             // instead of arriving in large 250 ms jumps, while still avoiding a
             // recomposition and Room write for every tiny token fragment.
@@ -564,7 +582,6 @@ class ChatViewModel(
             val thinking = ThinkingParser()
             val answer = StringBuilder(previousText)
             val reasoning = StringBuilder(previousThinking)
-            val sampling = samplingFor(model, skill, settings)
 
             _state.update {
                 it.copy(
@@ -573,6 +590,7 @@ class ChatViewModel(
                     streamingText = previousText,
                     streamingThinking = previousThinking,
                     continuableMessageId = null,
+                    notice = windowNotice,
                     error = null,
                 )
             }
@@ -580,6 +598,7 @@ class ChatViewModel(
             var stats = GenerationStats()
             var outcome = GenerationOutcome.COMPLETED
             var failure: String? = null
+            var lastPersistNanos = System.nanoTime()
 
             engine.stream(prompt, sampling).collect { event ->
                 when (event) {
@@ -597,9 +616,15 @@ class ChatViewModel(
                         }
                         if (out.answer.isNotEmpty()) {
                             answer.append(out.answer)
-                            // Persist and repaint at the coalescer's cadence, not per token.
+                            // Repaint at the smooth UI cadence, but persist separately
+                            // below. Re-querying an entire long transcript on every
+                            // tiny stream update is costly on low-end phones.
                             if (coalescer.offer(out.answer) != null) {
-                                publishStream(assistantId, answer.toString(), reasoning.toString())
+                                _state.update {
+                                    if (it.streamingMessageId == assistantId) {
+                                        it.copy(streamingText = answer.toString())
+                                    } else it
+                                }
                             }
                         }
                     }
@@ -613,6 +638,10 @@ class ChatViewModel(
                         failure = event.message
                         outcome = GenerationOutcome.FAILED
                     }
+                }
+                if (event is EngineEvent.Token && System.nanoTime() - lastPersistNanos >= 500_000_000L) {
+                    publishStream(assistantId, answer.toString(), reasoning.toString())
+                    lastPersistNanos = System.nanoTime()
                 }
             }
 
@@ -672,7 +701,7 @@ class ChatViewModel(
                             "The transcript reached its context limit; older turns were dropped."
                         outcome == GenerationOutcome.CANCELLED -> "Stopped after ${stats.tokensGenerated} tokens."
                         hitOutputCap -> "Response chunk complete. Tap the play icon under the answer to continue; the model context still sets the limit."
-                        else -> null
+                        else -> windowNotice
                     },
                 )
             }

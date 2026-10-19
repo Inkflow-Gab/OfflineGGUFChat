@@ -80,6 +80,7 @@ fun CodeBlock(
     previous: String? = null,
     showLineNumbers: Boolean = true,
     terminated: Boolean = true,
+    onSaveCode: (content: String, fileName: String) -> Unit = { _, _ -> },
 ) {
     val palette = OfflineGgufTheme.diff
     val spacing = OfflineGgufTheme.spacing
@@ -169,6 +170,21 @@ fun CodeBlock(
                 }
                 IconButton(
                     onClick = {
+                        val safeName = filename?.substringAfterLast('/')?.substringAfterLast('\\')
+                            ?.takeIf { it.isNotBlank() }
+                        onSaveCode(content, safeName ?: "snippet.${fileExtension(language)}")
+                    },
+                    modifier = Modifier.size(34.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_download),
+                        contentDescription = "Save ${filename ?: language.ifBlank { "code" }} to a file",
+                        modifier = Modifier.size(15.dp),
+                        tint = colors.onSurfaceVariant,
+                    )
+                }
+                IconButton(
+                    onClick = {
                         clipboard.setText(AnnotatedString(content))
                         copied = true
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -225,6 +241,25 @@ fun CodeBlock(
             }
         }
     }
+}
+
+private fun fileExtension(language: String): String = when (language.lowercase()) {
+    "python" -> "py"
+    "kotlin" -> "kt"
+    "javascript" -> "js"
+    "typescript" -> "ts"
+    "java" -> "java"
+    "c", "cpp" -> "cpp"
+    "csharp" -> "cs"
+    "rust" -> "rs"
+    "go" -> "go"
+    "json" -> "json"
+    "yaml" -> "yaml"
+    "html" -> "html"
+    "css" -> "css"
+    "bash" -> "sh"
+    "diff", "patch" -> "diff"
+    else -> "txt"
 }
 
 @Composable

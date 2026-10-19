@@ -64,6 +64,7 @@ fun MessageRow(
     onRegenerate: () -> Unit = {},
     canContinue: Boolean = false,
     onContinue: () -> Unit = {},
+    onSaveCode: (content: String, fileName: String) -> Unit = { _, _ -> },
     onEdit: () -> Unit = {},
     onDeleteFrom: () -> Unit = {},
     /** Fade and rise into place. Callers set this only for the newest message. */
@@ -97,6 +98,7 @@ fun MessageRow(
                     onRegenerate = onRegenerate,
                     canContinue = canContinue,
                     onContinue = onContinue,
+                    onSaveCode = onSaveCode,
                     onDeleteFrom = onDeleteFrom,
                 )
             }
@@ -171,6 +173,7 @@ private fun AssistantMessage(
     onRegenerate: () -> Unit,
     canContinue: Boolean,
     onContinue: () -> Unit,
+    onSaveCode: (content: String, fileName: String) -> Unit,
     onDeleteFrom: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -253,6 +256,7 @@ private fun AssistantMessage(
                     text = message.content,
                     previousCode = previousCode,
                     showLineNumbers = showLineNumbers,
+                    onSaveCode = onSaveCode,
                 )
                 if (streaming) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
