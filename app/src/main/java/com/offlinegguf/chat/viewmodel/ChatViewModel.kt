@@ -100,6 +100,11 @@ internal fun ChatUiState.withLoadedModel(
 ): ChatUiState = copy(
     model = model,
     loadingModel = false,
+    // The entity carries the architecture, which is enough to recognise a
+    // reasoning family even when the model was loaded from another screen and
+    // this ViewModel never saw the GGUF probe.
+    modelSupportsThinking = model != null &&
+        (modelSupportsThinking || PromptFormatter.supportsThinking(model.architecture, null)),
     contextSize = contextSize.coerceAtLeast(0),
     contextUsed = contextUsed.coerceIn(0, contextSize.coerceAtLeast(0)),
     error = if (model == null) error else null,
