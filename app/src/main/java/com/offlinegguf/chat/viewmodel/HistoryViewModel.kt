@@ -1,16 +1,20 @@
 package com.offlinegguf.chat.viewmodel
 
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.offlinegguf.chat.AppContainer
+import com.offlinegguf.chat.data.export.buildTranscriptShare
 import com.offlinegguf.chat.data.local.ConversationEntity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class HistoryUiState(
     val conversations: List<ConversationEntity> = emptyList(),
@@ -113,15 +117,38 @@ class HistoryViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    fun exportMarkdown(id: Long, onResult: (String) -> Unit) {
-        viewModelScope.launch { onResult(chat.exportMarkdown(id)) }
-    }
+    /** As in [ChatViewModel]: the transcript is rendered and written off the main thread. */
+    fun exportMarkdown(id: Long, onReady: (Intent?) -> Unit) =
+        export(id, "md", "text/markdown", { chat.exportMarkdown(it) }, onReady)
 
-    fun exportJson(id: Long, onResult: (String) -> Unit) {
-        viewModelScope.launch { onResult(chat.exportJson(id)) }
+    fun exportJson(id: Long, onReady: (Intent?) -> Unit) =
+        export(id, "json", "application/json", { chat.exportJson(it) }, onReady)
+
+    private fun export(
+        id: Long,
+        extension: String,
+        mime: String,
+        render: suspend (Long) -> String,
+        onReady: (Intent?) -> Unit,
+    ) {
+        viewModelScope.launch {
+            val intent = withContext(Dispatchers.IO) {
+                buildTranscriptShare(
+                    context = container.applicationContext,
+                    text = render(id),
+                    title = chat.conversation(id)?.title ?: "transcript",
+                    extension = extension,
+                    mime = mime,
+                )
+            }
+            onReady(intent)
+        }
     }
 
     fun consumeNotice() = _state.update { it.copy(notice = null) }
+
+    /** For failures the UI hits directly, such as an export nothing can receive. */
+    fun reportError(message: String) = _state.update { it.copy(error = message) }
 
     fun dismissError() = _state.update { it.copy(error = null) }
 

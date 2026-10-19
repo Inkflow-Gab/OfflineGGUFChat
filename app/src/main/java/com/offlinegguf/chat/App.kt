@@ -88,6 +88,22 @@ class AppContainer(private val context: Context) {
     }
 
     /**
+     * Set when another app shares *text* here. The SEND filter accepts every mime
+     * type, so this app shows up in the text share sheet; the chat screen drains
+     * this into the composer instead of ignoring the share.
+     */
+    private val _pendingPrompt = MutableStateFlow<String?>(null)
+    val pendingPrompt: StateFlow<String?> = _pendingPrompt
+
+    fun requestPrompt(text: String?) {
+        if (!text.isNullOrBlank()) _pendingPrompt.value = text
+    }
+
+    fun clearPendingPrompt() {
+        _pendingPrompt.value = null
+    }
+
+    /**
      * Work that should happen shortly after launch but must not block the first
      * frame: seeding built-in skills and picking up GGUF files the user copied in
      * by hand (adb push, a file manager, another app's download folder).

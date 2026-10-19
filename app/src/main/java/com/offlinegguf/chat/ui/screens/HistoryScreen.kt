@@ -43,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.offlinegguf.chat.AppContainer
 import com.offlinegguf.chat.R
+import com.offlinegguf.chat.data.export.launchShare
 import com.offlinegguf.chat.data.local.ConversationEntity
 import com.offlinegguf.chat.ui.components.ConfirmDialog
 import com.offlinegguf.chat.ui.components.EmptyState
@@ -74,13 +75,13 @@ fun HistoryScreen(
     var deleting by remember { mutableStateOf<ConversationEntity?>(null) }
     var clearing by remember { mutableStateOf<ConversationEntity?>(null) }
 
-    fun share(text: String, subject: String, mime: String) {
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = mime
-            putExtra(Intent.EXTRA_SUBJECT, subject)
-            putExtra(Intent.EXTRA_TEXT, text)
+    // The view model renders the transcript and writes the file off the main
+    // thread; this only launches what it built, and says so when the phone has
+    // nothing that can take the export.
+    fun share(intent: Intent?) {
+        if (!launchShare(context, intent)) {
+            viewModel.reportError("Nothing on this phone can take that export.")
         }
-        runCatching { context.startActivity(Intent.createChooser(intent, "Export")) }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -159,14 +160,10 @@ fun HistoryScreen(
                         onDelete = { deleting = conversation },
                         onClear = { clearing = conversation },
                         onExportMarkdown = {
-                            viewModel.exportMarkdown(conversation.id) { md ->
-                                share(md, conversation.title, "text/markdown")
-                            }
+                            viewModel.exportMarkdown(conversation.id) { intent -> share(intent) }
                         },
                         onExportJson = {
-                            viewModel.exportJson(conversation.id) { json ->
-                                share(json, conversation.title, "application/json")
-                            }
+                            viewModel.exportJson(conversation.id) { intent -> share(intent) }
                         },
                     )
                 }

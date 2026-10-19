@@ -52,6 +52,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.offlinegguf.chat.AppContainer
 import com.offlinegguf.chat.R
+import com.offlinegguf.chat.data.export.launchShare
 import com.offlinegguf.chat.data.settings.AppSettings
 import com.offlinegguf.chat.ui.components.ContextGauge
 import com.offlinegguf.chat.ui.components.EmptyState
@@ -118,13 +119,13 @@ fun ChatScreen(
         }
     }
 
-    fun share(text: String, subject: String, mime: String) {
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = mime
-            putExtra(Intent.EXTRA_SUBJECT, subject)
-            putExtra(Intent.EXTRA_TEXT, text)
+    // The view model renders the transcript and writes the file off the main
+    // thread; this only launches what it built, and says so when the phone has
+    // nothing that can take the export.
+    fun share(intent: Intent?) {
+        if (!launchShare(context, intent)) {
+            viewModel.reportError("Nothing on this phone can take that export.")
         }
-        runCatching { context.startActivity(Intent.createChooser(intent, "Export")) }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -217,7 +218,7 @@ fun ChatScreen(
                             enabled = state.messages.isNotEmpty(),
                             onClick = {
                                 menuOpen = false
-                                viewModel.exportMarkdown { md -> share(md, state.title, "text/markdown") }
+                                viewModel.exportMarkdown { intent -> share(intent) }
                             },
                         )
                         DropdownMenuItem(
@@ -228,7 +229,7 @@ fun ChatScreen(
                             enabled = state.messages.isNotEmpty(),
                             onClick = {
                                 menuOpen = false
-                                viewModel.exportJson { json -> share(json, state.title, "application/json") }
+                                viewModel.exportJson { intent -> share(intent) }
                             },
                         )
                         DropdownMenuItem(

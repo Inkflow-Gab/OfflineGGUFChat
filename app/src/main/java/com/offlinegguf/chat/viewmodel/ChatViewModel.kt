@@ -1,5 +1,6 @@
 package com.offlinegguf.chat.viewmodel
 
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -9,6 +10,7 @@ import com.offlinegguf.chat.AppContainer
 import com.offlinegguf.chat.data.local.ConversationEntity
 import com.offlinegguf.chat.data.local.LocalModelEntity
 import com.offlinegguf.chat.data.local.MessageEntity
+import com.offlinegguf.chat.data.export.buildTranscriptShare
 import com.offlinegguf.chat.data.local.Roles
 import com.offlinegguf.chat.data.local.SkillEntity
 import com.offlinegguf.chat.data.repository.toSpec
@@ -127,6 +129,26 @@ class ChatViewModel(
             if (settings.autoLoadLastModel) restoreModel(settings)
         }
         drainPendingSkill()
+        drainPendingPrompt()
+    }
+
+    /**
+     * Text another app shared into this one. The SEND filter accepts every mime
+     * type, so the app is in the text share sheet too; that text becomes the draft
+     * prompt rather than being dropped on the floor.
+     */
+    private fun drainPendingPrompt() {
+        viewModelScope.launch {
+            container.pendingPrompt.collect { shared ->
+                if (shared.isNullOrBlank()) return@collect
+                container.clearPendingPrompt()
+                _state.update { current ->
+                    val draft = current.input
+                    val merged = if (draft.isBlank()) shared else "${draft.trimEnd()}\n\n$shared"
+                    current.copy(input = merged)
+                }
+            }
+        }
     }
 
     /** A skill chosen on another screen; applied here and then cleared. */
@@ -177,6 +199,9 @@ class ChatViewModel(
     fun onInputChange(value: String) = _state.update { it.copy(input = value) }
 
     fun consumeNotice() = _state.update { it.copy(notice = null) }
+
+    /** For failures the UI hits directly, such as an export nothing can receive. */
+    fun reportError(message: String) = _state.update { it.copy(error = message) }
 
     fun dismissError() = _state.update { it.copy(error = null) }
 
@@ -631,12 +656,37 @@ class ChatViewModel(
 
     // ---------------------------------------------------------------- export
 
-    fun exportMarkdown(onResult: (String) -> Unit) {
-        viewModelScope.launch { onResult(chat.exportMarkdown(_state.value.conversationId)) }
-    }
+    /**
+     * Both exports build the transcript and write the shared file off the main
+     * thread, then hand back a ready-to-launch chooser intent. A null intent means
+     * the file could not be written, which the screen reports.
+     */
+    fun exportMarkdown(onReady: (Intent?) -> Unit) =
+        export("md", "text/markdown", { id -> chat.exportMarkdown(id) }, onReady)
 
-    fun exportJson(onResult: (String) -> Unit) {
-        viewModelScope.launch { onResult(chat.exportJson(_state.value.conversationId)) }
+    fun exportJson(onReady: (Intent?) -> Unit) =
+        export("json", "application/json", { id -> chat.exportJson(id) }, onReady)
+
+    private fun export(
+        extension: String,
+        mime: String,
+        render: suspend (Long) -> String,
+        onReady: (Intent?) -> Unit,
+    ) {
+        viewModelScope.launch {
+            val conversationId = _state.value.conversationId
+            val title = _state.value.title
+            val intent = withContext(Dispatchers.IO) {
+                buildTranscriptShare(
+                    context = container.applicationContext,
+                    text = render(conversationId),
+                    title = title,
+                    extension = extension,
+                    mime = mime,
+                )
+            }
+            onReady(intent)
+        }
     }
 
     /**

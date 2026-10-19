@@ -74,6 +74,17 @@ class MainActivity : ComponentActivity() {
                 }
             else -> null
         }
-        if (uri != null) container.requestImport(uri)
+        if (uri != null) {
+            container.requestImport(uri)
+            return
+        }
+
+        // The SEND filter takes every mime type, so this activity is also in the
+        // plain-text share sheet. Shared text becomes the draft prompt; without
+        // this the app accepts the share and then does nothing at all.
+        if (intent.action == Intent.ACTION_SEND) {
+            val shared = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()?.trim()
+            if (!shared.isNullOrEmpty()) container.requestPrompt(shared)
+        }
     }
 }
