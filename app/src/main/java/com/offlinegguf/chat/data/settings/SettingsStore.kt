@@ -17,6 +17,19 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 
+/** Prompt and sampling preset selected from the chat toolbar. */
+enum class ChatMode(val label: String, val instruction: String) {
+    BALANCED("Balanced", "Be accurate and useful. Answer the actual question first, separate known facts from assumptions, and say when you are uncertain."),
+    FAST("Fast", "Give the shortest useful answer first. Skip background unless requested, and avoid repeating the question."),
+    CHAT("Chat", "Use a natural, warm conversational style. Keep the exchange engaging without inventing personal experiences or facts."),
+    CODING("Coding", "Act as a careful coding partner. Give runnable, maintainable code, preserve the user's conventions, and explain important assumptions or risks. For complete files of 50 or more lines, include the filename in the opening code fence, for example ```python main.py. Never claim code was tested unless it was."),
+    CAREFUL("Deep thinking", "Prioritize correctness over speed. Check the request for ambiguity, reason through relevant constraints, and present a concise conclusion with uncertainty clearly stated."),
+
+    companion object {
+        fun fromName(name: String?): ChatMode = values().firstOrNull { it.name.equals(name, ignoreCase = true) } ?: BALANCED
+    }
+}
+
 /** Immutable snapshot of every user preference. */
 data class AppSettings(
     // ---- appearance ----
@@ -28,6 +41,7 @@ data class AppSettings(
 
     // ---- chat behaviour ----
     val showThinking: Boolean = true,
+    val chatMode: ChatMode = ChatMode.BALANCED,
     val keepScreenOn: Boolean = false,
     val autoLoadLastModel: Boolean = true,
     val confirmBeforeDelete: Boolean = true,
@@ -92,6 +106,7 @@ class SettingsStore(private val context: Context) {
         val SHOW_LINE_NUMBERS = booleanPreferencesKey("show_line_numbers")
 
         val SHOW_THINKING = booleanPreferencesKey("show_thinking")
+        val CHAT_MODE = stringPreferencesKey("chat_mode")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val AUTO_LOAD_LAST = booleanPreferencesKey("auto_load_last_model")
         val CONFIRM_DELETE = booleanPreferencesKey("confirm_before_delete")
@@ -129,6 +144,7 @@ class SettingsStore(private val context: Context) {
                 highContrast = prefs[Keys.HIGH_CONTRAST] ?: false,
                 showLineNumbers = prefs[Keys.SHOW_LINE_NUMBERS] ?: true,
                 showThinking = prefs[Keys.SHOW_THINKING] ?: true,
+                chatMode = ChatMode.fromName(prefs[Keys.CHAT_MODE]),
                 keepScreenOn = prefs[Keys.KEEP_SCREEN_ON] ?: false,
                 autoLoadLastModel = prefs[Keys.AUTO_LOAD_LAST] ?: true,
                 confirmBeforeDelete = prefs[Keys.CONFIRM_DELETE] ?: true,
@@ -156,6 +172,7 @@ class SettingsStore(private val context: Context) {
     suspend fun setHighContrast(value: Boolean) = edit { it[Keys.HIGH_CONTRAST] = value }
     suspend fun setShowLineNumbers(value: Boolean) = edit { it[Keys.SHOW_LINE_NUMBERS] = value }
     suspend fun setShowThinking(value: Boolean) = edit { it[Keys.SHOW_THINKING] = value }
+    suspend fun setChatMode(mode: ChatMode) = edit { it[Keys.CHAT_MODE] = mode.name }
     suspend fun setKeepScreenOn(value: Boolean) = edit { it[Keys.KEEP_SCREEN_ON] = value }
     suspend fun setAutoLoadLastModel(value: Boolean) = edit { it[Keys.AUTO_LOAD_LAST] = value }
     suspend fun setConfirmBeforeDelete(value: Boolean) = edit { it[Keys.CONFIRM_DELETE] = value }

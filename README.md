@@ -53,8 +53,11 @@ holds code, diffs and gauges does not need a fourth visual channel. See
 
 **Chat**
 
-- Streaming output, coalesced on a 256 ms / 48-character window so the UI stays
-  smooth instead of redrawing per token.
+- Streaming output, coalesced on a ~96 ms / 16-character window for visibly
+  progressive text without redrawing or writing to Room for every token.
+- A quick chat-mode menu: Balanced, Fast, Chat, Coding, and Deep thinking. Modes
+  adjust the prompt and relevant sampling defaults; the model menu routes to the
+  full 18-model catalogue, including five refusal-free fine-tunes.
 - Reasoning models get their scratch work split into a separate collapsible
   *thinking* channel (`<think>`, `<thinking>`, `<reasoning>` and friends),
   incrementally, with marker prefixes held back so a tag split across two token
@@ -62,15 +65,19 @@ holds code, diffs and gauges does not need a fourth visual channel. See
 - Markdown rendering with **added/removed line diffs** inside code blocks: when a
   model answers with a patch, or when you regenerate and compare, changed lines
   are marked with `+` / `−`, gutter-marked and tinted rather than coloured.
+  Fenced blocks can show a filename, language, line count and one-tap copy;
+  blocks over 50 lines collapse into a compact file-style panel.
 - **Per-message like counts.** Every message carries a ♥ with a count; the
   conversation caches its totals, and the top bar shows the running sum. A
   second flag marks "not helpful", which is kept separately from a like.
-- Stop mid-generation, regenerate from any point (the tail is rewound, not
-  deleted), edit and resend, pin conversations, search history, export a
-  conversation as Markdown or JSON.
+- Long answers can continue in bounded chunks with one tap, reusing the same
+  assistant message. There is no app-wide total-output cap; each pass is bounded
+  by the model's context and phone memory. Stop mid-generation, regenerate from
+  any point, edit and resend, pin conversations, search history, export as Markdown or JSON.
 - Nine built-in *skills* — prompt + GBNF grammar pairs such as `code-reply`,
   `patch-mode`, `json-extract`, `summarize`, `no-refusals` — editable in-app,
-  with grammar validation before save.
+  with grammar validation before save. Custom skills can define reusable task
+  roles or fictional personas and their speaking style.
 
 **Discovery**
 

@@ -155,7 +155,7 @@ object ModelFit {
 
         // ---- memory ----
         val budget = profile.modelRamBudgetBytes
-        val kvPerToken = kvBytesPerToken(spec)
+        val kvPerToken = kvBytesPerToken(spec, kvType)
         var kvBytes = context.toLong() * kvPerToken
         var weights = (spec.weightBytes * MMAP_FACTOR).toLong()
 

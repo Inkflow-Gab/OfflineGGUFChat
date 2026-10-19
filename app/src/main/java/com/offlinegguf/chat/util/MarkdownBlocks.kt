@@ -23,6 +23,8 @@ object MarkdownBlocks {
             val content: String,
             /** False while the closing fence has not arrived yet. */
             val terminated: Boolean,
+            /** Optional path/name from fence info, e.g. ```python app.py. */
+            val filename: String? = null,
         ) : Block() {
             val lineCount: Int get() = if (content.isEmpty()) 0 else content.split('\n').size
         }
@@ -63,7 +65,7 @@ object MarkdownBlocks {
             val fence = fenceOf(trimmed)
             if (fence != null) {
                 flushParagraph()
-                val language = trimmed.substring(fence.length).trim()
+                val (language, filename) = parseFenceInfo(trimmed.substring(fence.length).trim())
                 val body = StringBuilder()
                 var terminated = false
                 index++
@@ -78,7 +80,7 @@ object MarkdownBlocks {
                     body.append(lines[index])
                     index++
                 }
-                out += Block.Code(normalizeLanguage(language), body.toString(), terminated)
+                out += Block.Code(normalizeLanguage(language), body.toString(), terminated, filename)
                 continue
             }
 
@@ -174,6 +176,24 @@ object MarkdownBlocks {
         if (trimmed.startsWith("```")) return trimmed.takeWhile { it == '`' }
         if (trimmed.startsWith("~~~")) return trimmed.takeWhile { it == '~' }
         return null
+    }
+
+    /** Read common fenced-code metadata without treating a filename as the language. */
+    private fun parseFenceInfo(raw: String): Pair<String, String?> {
+        if (raw.isBlank()) return "" to null
+        val languageToken = raw.takeWhile { !it.isWhitespace() && it != ':' }.trim()
+        val remainder = if (raw.contains(':') && !raw.substringBefore(':').any { it.isWhitespace() }) {
+            raw.substringAfter(':').trim()
+        } else {
+            raw.removePrefix(languageToken).trim()
+        }
+        val metadata = Regex("""([\w-]+)=(?:"([^"]*)"|'([^']*)'|([^\s]+))""")
+        val named = metadata.findAll(remainder).associate { match ->
+            match.groupValues[1].lowercase() to (match.groupValues.drop(2).firstOrNull { it.isNotEmpty() }.orEmpty())
+        }
+        val positional = remainder.split(Regex("\\s+")).firstOrNull { it.isNotBlank() && !it.contains('=') }
+        val filename = named["filename"] ?: named["file"] ?: named["title"] ?: named["path"] ?: positional
+        return languageToken to filename?.takeIf { it.isNotBlank() }
     }
 
     private fun normalizeLanguage(raw: String): String {

@@ -29,10 +29,20 @@ data class DeviceProfile(
 
     val isArm64: Boolean get() = abiList.any { it == "arm64-v8a" }
 
-    /** Cores to hand the engine: leave two for the OS and the UI thread. */
-    val suggestedThreads: Int get() = (cores - 2).coerceIn(2, 4)
+    /**
+     * Keep a core available for Android/UI. On a one- or two-core phone, use
+     * fewer workers rather than forcing two threads and starving the foreground.
+     */
+    val suggestedThreads: Int
+        get() = if (lowRamDevice) 1 else (cores - 1).coerceIn(1, 4)
 
-    val suggestedBatch: Int get() = if (ramBytes < RAM_4GB) 128 else 512
+    /** Smaller prompt batches reduce temporary allocations on memory-tight phones. */
+    val suggestedBatch: Int
+        get() = when {
+            lowRamDevice || ramBytes < RAM_3GB -> 64
+            ramBytes < RAM_4GB -> 128
+            else -> 512
+        }
 
     /**
      * RAM the app may realistically spend on a model. Everything else belongs

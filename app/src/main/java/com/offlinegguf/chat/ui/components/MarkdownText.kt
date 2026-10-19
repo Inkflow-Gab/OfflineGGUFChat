@@ -93,6 +93,7 @@ fun MarkdownText(
                     CodeBlock(
                         content = block.content,
                         language = block.language,
+                        filename = block.filename,
                         previous = previousCode[codeIndex],
                         showLineNumbers = showLineNumbers,
                         terminated = block.terminated,

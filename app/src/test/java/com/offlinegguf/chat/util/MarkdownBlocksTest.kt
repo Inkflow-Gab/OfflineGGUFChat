@@ -63,6 +63,22 @@ class MarkdownBlocksTest {
     }
 
     @Test
+    fun `fence metadata captures a filename and keeps language separate`() {
+        val positional = code(MarkdownBlocks.parse("```python app/main.py\nprint('hi')\n```").single())
+        assertEquals("python", positional.language)
+        assertEquals("app/main.py", positional.filename)
+        assertEquals(1, positional.lineCount)
+
+        val named = code(MarkdownBlocks.parse("```kotlin title=\"Main Screen.kt\"\nfun main() {}\n```").single())
+        assertEquals("kotlin", named.language)
+        assertEquals("Main Screen.kt", named.filename)
+
+        val compact = code(MarkdownBlocks.parse("```js:src/app.js\nrun()\n```").single())
+        assertEquals("javascript", compact.language)
+        assertEquals("src/app.js", compact.filename)
+    }
+
+    @Test
     fun `an unterminated fence still renders as code while streaming`() {
         val blocks = MarkdownBlocks.parse("```py\nprint(1)")
         val block = code(blocks[0])

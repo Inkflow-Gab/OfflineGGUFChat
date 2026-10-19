@@ -54,6 +54,7 @@ import com.offlinegguf.chat.AppContainer
 import com.offlinegguf.chat.R
 import com.offlinegguf.chat.data.export.launchShare
 import com.offlinegguf.chat.data.settings.AppSettings
+import com.offlinegguf.chat.data.settings.ChatMode
 import com.offlinegguf.chat.ui.components.ContextGauge
 import com.offlinegguf.chat.ui.components.EmptyState
 import com.offlinegguf.chat.ui.components.InkButton
@@ -99,6 +100,7 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var menuOpen by remember { mutableStateOf(false) }
+    var modeMenuOpen by remember { mutableStateOf(false) }
     var showGauge by remember { mutableStateOf(false) }
 
     val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -163,6 +165,38 @@ fun ChatScreen(
                         )
                     }
                 }
+                Box {
+                    InkIconButton(
+                        icon = R.drawable.ic_brain,
+                        description = "Chat mode: ${settings.chatMode.label}. Open chat modes and thinking options",
+                        onClick = { modeMenuOpen = true },
+                    )
+                    DropdownMenu(expanded = modeMenuOpen, onDismissRequest = { modeMenuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Chat modes") },
+                            enabled = false,
+                            leadingIcon = { Icon(painterResource(R.drawable.ic_sparkle), null, Modifier.size(16.dp)) },
+                            onClick = {},
+                        )
+                        ChatMode.values().forEach { mode ->
+                            DropdownMenuItem(
+                                text = { Text(if (settings.chatMode == mode) "✓ ${mode.label}" else mode.label) },
+                                onClick = {
+                                    modeMenuOpen = false
+                                    scope.launch { container.settings.setChatMode(mode) }
+                                },
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text(if (settings.showThinking) "Hide model reasoning" else "Show model reasoning") },
+                            leadingIcon = { Icon(painterResource(R.drawable.ic_brain), null, Modifier.size(16.dp)) },
+                            onClick = {
+                                modeMenuOpen = false
+                                scope.launch { container.settings.setShowThinking(!settings.showThinking) }
+                            },
+                        )
+                    }
+                }
                 InkIconButton(
                     icon = R.drawable.ic_plus,
                     description = "New chat",
@@ -182,7 +216,12 @@ fun ChatScreen(
                     )
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
-                            text = { Text("Models") },
+                            text = {
+                                Text(
+                                    "Choose a model · ${container.catalog.entries.size} options " +
+                                        "(${container.catalog.uncensored().size} refusal-free)",
+                                )
+                            },
                             leadingIcon = {
                                 Icon(painterResource(R.drawable.ic_cube), null, Modifier.size(16.dp))
                             },
@@ -326,6 +365,8 @@ fun ChatScreen(
                         onLike = { liked -> viewModel.toggleLike(message.id, liked) },
                         onFlag = { flagged -> viewModel.toggleFlag(message.id, flagged) },
                         onRegenerate = { viewModel.regenerate() },
+                        canContinue = state.continuableMessageId == message.id,
+                        onContinue = { viewModel.continueMessage(message.id) },
                         onEdit = { viewModel.startEditing(message.id, message.content) },
                         onDeleteFrom = { viewModel.deleteFrom(message.id) },
                     )

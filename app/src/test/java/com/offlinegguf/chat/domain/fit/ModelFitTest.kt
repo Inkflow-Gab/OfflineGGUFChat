@@ -95,10 +95,10 @@ class ModelFitTest {
     }
 
     @Test
-    fun `suggested threads leave two cores for the system`() {
+    fun `suggested threads leave a core for Android and the UI`() {
         assertEquals(4, device(cores = 8).suggestedThreads)
-        assertEquals(2, device(cores = 4).suggestedThreads)
-        assertEquals(2, device(cores = 2).suggestedThreads)
+        assertEquals(3, device(cores = 4).suggestedThreads)
+        assertEquals(1, device(cores = 2).suggestedThreads)
         assertEquals(512, device(8).suggestedBatch)
         assertEquals(128, device(3).suggestedBatch)
     }
@@ -124,6 +124,17 @@ class ModelFitTest {
         assertEquals(36864, ModelFit.kvBytesPerToken(spec(), "q4_0"))
         // An unknown cache type falls back to f16 rather than guessing small.
         assertEquals(131072, ModelFit.kvBytesPerToken(spec(), "nonsense"))
+    }
+
+    @Test
+    fun `fit estimate accounts for the requested KV cache quantization`() {
+        val assessment = ModelFit.assess(
+            device(8),
+            spec(),
+            ModelFit.Request(context = 8192, kvType = "q8_0"),
+        )
+        assertEquals(69_632L * 8192L, assessment.kvBytes)
+        assertEquals("q8_0", assessment.settings.kvType)
     }
 
     @Test

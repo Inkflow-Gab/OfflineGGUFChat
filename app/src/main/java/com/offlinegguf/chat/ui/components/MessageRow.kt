@@ -62,6 +62,8 @@ fun MessageRow(
     onLike: (Boolean) -> Unit = {},
     onFlag: (Boolean) -> Unit = {},
     onRegenerate: () -> Unit = {},
+    canContinue: Boolean = false,
+    onContinue: () -> Unit = {},
     onEdit: () -> Unit = {},
     onDeleteFrom: () -> Unit = {},
     /** Fade and rise into place. Callers set this only for the newest message. */
@@ -93,6 +95,8 @@ fun MessageRow(
                     onLike = onLike,
                     onFlag = onFlag,
                     onRegenerate = onRegenerate,
+                    canContinue = canContinue,
+                    onContinue = onContinue,
                     onDeleteFrom = onDeleteFrom,
                 )
             }
@@ -165,6 +169,8 @@ private fun AssistantMessage(
     onLike: (Boolean) -> Unit,
     onFlag: (Boolean) -> Unit,
     onRegenerate: () -> Unit,
+    canContinue: Boolean,
+    onContinue: () -> Unit,
     onDeleteFrom: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -262,9 +268,9 @@ private fun AssistantMessage(
         ) {
             ThinkingPulse(
                 label = when {
-                    showThinking -> "Preparing response…"
+                    showThinking -> "Evaluating prompt… first response may take longer"
                     !message.thinkingText.isNullOrBlank() -> "Thinking privately…"
-                    else -> "Starting response…"
+                    else -> "Evaluating prompt… first response may take longer"
                 },
                 modifier = Modifier.padding(top = spacing.xs),
             )
@@ -297,6 +303,14 @@ private fun AssistantMessage(
                 onClick = onCopy,
                 size = 16,
             )
+            if (canContinue && !streaming) {
+                InkIconButton(
+                    icon = R.drawable.ic_play,
+                    description = "Continue response with another token chunk",
+                    onClick = onContinue,
+                    size = 16,
+                )
+            }
             InkIconButton(
                 icon = R.drawable.ic_refresh,
                 description = "Regenerate",

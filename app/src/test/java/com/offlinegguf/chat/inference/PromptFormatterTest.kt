@@ -323,6 +323,14 @@ class PromptFormatterTest {
     }
 
     @Test
+    fun `a skill template that omits attachment placeholder still receives attached files`() {
+        assertEquals(
+            "Summarise this:\n\nhi\n\n--- Attached files ---\nnotes.txt: body",
+            PromptFormatter.composeUserMessage("hi", "notes.txt: body", "Summarise this: {{input}}"),
+        )
+    }
+
+    @Test
     fun `a template without the input placeholder still keeps the input`() {
         assertEquals(
             "Always answer in bullet points.\n\nhi",
