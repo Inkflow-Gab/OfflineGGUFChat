@@ -10,9 +10,9 @@ plugins {
 // ---------------------------------------------------------------------------
 // Build-time switches (all optional, all safe to ignore)
 //
-//   -Pofflinegguf.llama=true     compile the real llama.cpp engine from
-//                                app/llama-cpp (see scripts/sync-llama.sh).
-//                                Off by default so a fresh clone always builds.
+//   -Pofflinegguf.llama=true     force the real llama.cpp engine on; when the
+//                                pinned source is synced under app/llama-cpp it
+//                                is detected and enabled automatically.
 //   -Pofflinegguf.llamaDir=PATH  use a llama.cpp checkout outside the repo.
 //   -Pofflinegguf.abis=arm64-v8a  restrict ABIs (faster local / CI builds).
 //   -Pofflinegguf.minify=true    enable R8 + resource shrinking for release.
@@ -24,7 +24,10 @@ plugins {
 fun flag(name: String): Boolean =
     (project.findProperty(name) as String?)?.toBooleanStrictOrNull() == true
 
-val llamaEnabled: Boolean = flag("offlinegguf.llama") || System.getenv("OFFLINEGGUF_LLAMA").toBoolean()
+val defaultLlamaDir = file("llama-cpp")
+val llamaEnabled: Boolean = flag("offlinegguf.llama") ||
+    System.getenv("OFFLINEGGUF_LLAMA").toBoolean() ||
+    defaultLlamaDir.resolve("include/llama.h").isFile
 val llamaDir: File = (project.findProperty("offlinegguf.llamaDir") as String?)
     ?.let { file(it) }
     ?: file("llama-cpp")

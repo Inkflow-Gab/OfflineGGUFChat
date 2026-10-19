@@ -5,11 +5,16 @@ when a llama.cpp revision moves the API.
 
 ---
 
-## 1. The rule: the engine is optional
+## 1. Source checkout vs installable APK
 
-`OFFLINEGGUF_WITH_LLAMA` defaults to **OFF**. In that configuration the build
-still produces a real `libllama_jni.so` with all 23 JNI entry points — it just
-links against a bridge that reports the engine as absent:
+The source checkout does not vendor llama.cpp. A bare local build with no synced
+source still compiles the null bridge; the normal debug/release APK workflow,
+however, fetches the pin and enables the real engine. Thus the installable APKs
+are inference-capable while the repository stays small and license-clean.
+
+A build with `OFFLINEGGUF_WITH_LLAMA=OFF` still produces a real
+`libllama_jni.so` with all 23 JNI entry points — it just links against a bridge
+that reports the engine as absent:
 
 ```
 BridgeAvailable()      -> false
@@ -23,28 +28,29 @@ BridgeGenerate(...)    -> false, and fires callbacks.on_error with the same text
 ```
 Inference engine not compiled into this build.
 
-This APK contains the GGUF tooling (scan, inspect, import, chat history) but
-no llama.cpp backend, so generation is unavailable.
+This local build contains the GGUF tooling (scan, inspect, import, chat history)
+but no llama.cpp backend, so generation is unavailable.
 
 To build with inference:
   1. ./scripts/sync-llama.sh
   2. ./gradlew assembleRelease -Pofflinegguf.llama=true
+
+The downloadable CI debug/release APKs already include the pinned backend.
 
 See docs/NATIVE.md.
 ```
 
 That text is surfaced verbatim by `NativeLlamaEngine.unavailableReason`, and the
 chat, model-detail and settings screens print it rather than showing a generic
-failure. A fresh clone therefore builds, installs, parses GGUF files,
-scores the catalogue and runs every unit test — it simply cannot generate tokens
-until you opt in.
+failure. A bare local clone can still build for parser/UI work, but cannot generate
+until llama.cpp is synced; the downloadable CI APKs do include the engine.
 
 Why not vendor llama.cpp?
 
 - It is ~40 MB of source and would dominate this repository.
 - Its licence and its release cadence are its own business; pinning a copy here
   invites stale, silently-diverging forks.
-- The default CI build then needs no NDK-heavy 20-minute compile to stay green.
+- The fast host/native and Kotlin test jobs stay independent; the APK job does the NDK-heavy engine compile only when assembling installable APKs.
 
 ## 2. Turning the engine on
 
@@ -213,9 +219,8 @@ Runs on a plain Linux/macOS host with a C++17 compiler:
 Logs land in `build/native-check/`. On a bare host this reports 5 passed /
 2 skipped; with a JDK available, 6 passed / 1 skipped. With llama.cpp synced and
 CMake installed it builds the real host library and runs the three CTest cases
-(2 core tests + the bridge smoke). The separate manual `engine-android` workflow
-builds the actual arm64 APK through the Android NDK and checks the packaged JNI
-library. Normal CI remains llama-free. CI runs the default checks as its own
+(2 core tests + the bridge smoke). The regular APK job syncs llama.cpp, builds both Android variants, and checks
+the JNI library in each packaged APK. CI runs the no-engine native checks as its own
 `native` job so a native regression fails fast and separately from Gradle.
 
 ## 9. Troubleshooting

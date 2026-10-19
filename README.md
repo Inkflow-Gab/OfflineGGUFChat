@@ -100,38 +100,49 @@ Both are `arm64-v8a` only, which is what phones from the last several years run.
 ```bash
 git clone https://github.com/Inkflow-Gab/OfflineGGUFChat.git
 cd OfflineGGUFChat
-./gradlew assembleDebug          # -> app/build/outputs/apk/debug/
-./gradlew testDebugUnitTest      # 167 JVM unit tests
-./scripts/check-native.sh        # native checks, no NDK needed
+./scripts/sync-llama.sh          # fetch the pinned inference engine
+./gradlew assembleDebug -Pofflinegguf.abis=arm64-v8a
+./gradlew testDebugUnitTest      # JVM unit tests
+./scripts/check-native.sh        # native checks; exercises llama.cpp if synced
 ```
 
 Requirements: JDK 17, Android SDK with platform 34 and build-tools 34.0.0.
-NDK 25.2.9519653 and CMake 3.22.1 are needed for the native layer, which is
-built in both configurations — see below.
+NDK 25.2.9519653 and CMake 3.22.1 build the native library; the distributable
+CI APKs compile the real llama.cpp backend into that library.
 
-## The engine is optional, on purpose
+## llama.cpp is included in the installable APKs
 
-The repository does **not** vendor [llama.cpp](https://github.com/ggml-org/llama.cpp).
-A fresh clone builds a complete app whose native layer is real, compiled code —
-it just reports "engine not compiled in" instead of pretending to generate text.
-Every screen that could offer generation prints the engine's own
-`unavailableReason` verbatim, so you are never left guessing.
+The source repository does not vendor upstream llama.cpp, but the normal CI APK
+build now fetches the pinned revision and compiles the real engine into **both
+debug and release APKs**. That is the APK to install when you want to load GGUF
+models; the previous engine-free APK correctly reported that inference was not
+connected.
 
-To turn inference on:
+For a local build, run:
 
 ```bash
-./scripts/sync-llama.sh --engine     # fetch the pinned revision, then build
-# or, step by step:
 ./scripts/sync-llama.sh
-./gradlew assembleDebug -Pofflinegguf.llama=true
+./gradlew assembleDebug -Pofflinegguf.abis=arm64-v8a
 ```
 
-`llama.cpp.pin` records the exact tag and commit the bridge was written against,
-`app/llama-cpp/` is git-ignored, and the C++ side touches `llama.h` in exactly
-one translation unit behind 25 compile-time capability probes, so a different
-llama.cpp revision degrades instead of failing to build. The full story — bridge
-design, JNI surface, 16 KB page alignment, gradle flags, ABI selection — is in
-[`docs/NATIVE.md`](docs/NATIVE.md).
+Gradle detects `app/llama-cpp/include/llama.h` and enables the engine
+automatically. `-Pofflinegguf.llama=true` remains available to force it on, and
+fails clearly if the source was not synced. The C++ bridge is pinned to the
+revision in `llama.cpp.pin`; the checkout is git-ignored and never committed.
+
+### Use it without root
+
+Root is **not required** on Android. Import a `.gguf` through Models → Import or
+open/share the file from a file manager. Android's Storage Access Framework gives
+the app temporary access; the app copies the model into its own private
+`filesDir/models` directory, then llama.cpp opens that stable path as the normal
+app user. Rooted phones use the same safe app sandbox; root does not improve CPU
+inference or remove RAM/storage limits. Pick a model that the device-aware fit
+adviser marks usable, and leave enough free storage for the import copy.
+
+The app deliberately has no `INTERNET` permission. Download model weights in a
+browser or another trusted source, verify their licence, then import the GGUF;
+model files are not bundled in the APK.
 
 ## Repository layout
 
@@ -170,18 +181,13 @@ requests:
    against golden fixtures, the UTF-8 framer, and the no-engine bridge.
 2. **unit-tests** — `./gradlew testDebugUnitTest`, with the HTML report uploaded
    as an artifact.
-3. **apk** — needs both of the above; assembles debug *and* release APKs
-   (`-Pofflinegguf.abis=arm64-v8a`) and uploads them.
+3. **apk** — needs both of the above; fetches the pinned llama.cpp revision,
+   assembles engine-enabled debug *and* release APKs for arm64, verifies that
+   `libllama_jni.so` contains the real engine/JNI entry point, and uploads them.
 4. **release** — on `v*` tags only; renames the APKs to
    `OfflineGGUFChat-<version>-{debug,release}.apk`, writes `checksums.txt`
    (sha256) and publishes a GitHub Release.
 
-The optional **engine-android** job is deliberately not part of normal CI. Use
-GitHub Actions → Android Build → Run workflow and set `build_llama_engine` to
-build the pinned llama.cpp source into an arm64 debug APK. It verifies that the
-real JNI library made it into the APK and uploads it as
-`llama-engine-arm64-debug-apk`. That is the end-to-end Android packaging check;
-normal CI still proves the app builds without fetching/vendorizing llama.cpp.
 
 Set `KEYSTORE_FILE` (base64), `KEYSTORE_PASSWORD`, `KEY_ALIAS` and
 `KEY_PASSWORD` as repository secrets to sign release builds with your own key.
