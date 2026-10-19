@@ -163,7 +163,8 @@ third-party icon or font assets.
 
 ## Continuous integration
 
-`.github/workflows/android-build.yml` runs four jobs:
+`.github/workflows/android-build.yml` runs four jobs on normal pushes and pull
+requests:
 
 1. **native** — `./scripts/check-native.sh` on a plain runner: the GGUF parser
    against golden fixtures, the UTF-8 framer, and the no-engine bridge.
@@ -174,6 +175,13 @@ third-party icon or font assets.
 4. **release** — on `v*` tags only; renames the APKs to
    `OfflineGGUFChat-<version>-{debug,release}.apk`, writes `checksums.txt`
    (sha256) and publishes a GitHub Release.
+
+The optional **engine-android** job is deliberately not part of normal CI. Use
+GitHub Actions → Android Build → Run workflow and set `build_llama_engine` to
+build the pinned llama.cpp source into an arm64 debug APK. It verifies that the
+real JNI library made it into the APK and uploads it as
+`llama-engine-arm64-debug-apk`. That is the end-to-end Android packaging check;
+normal CI still proves the app builds without fetching/vendorizing llama.cpp.
 
 Set `KEYSTORE_FILE` (base64), `KEYSTORE_PASSWORD`, `KEY_ALIAS` and
 `KEY_PASSWORD` as repository secrets to sign release builds with your own key.

@@ -208,10 +208,14 @@ Runs on a plain Linux/macOS host with a C++17 compiler:
 | `utf8-test` / `utf8-run` | builds and runs `utf8_test` |
 | `bridge-none` | compiles `llama_bridge_none.cpp` — the default build path is real code |
 | `jni-syntax-check` | type-checks `llama_jni.cpp` against a real `jni.h`; **skipped** with no JDK (set `JAVA_HOME`) |
-| `bridge-llama-syntax` | compiles the real bridge; reported as a `bridge-llama` **skip** unless `app/llama-cpp` exists |
+| `bridge-llama` | when `app/llama-cpp` exists, CMake compiles pinned llama.cpp and the real bridge, then smoke-tests availability, version, session lifetime and a failed model load; skipped otherwise |
 
 Logs land in `build/native-check/`. On a bare host this reports 5 passed /
-2 skipped; with a JDK available, 6 passed / 1 skipped. CI runs it as its own
+2 skipped; with a JDK available, 6 passed / 1 skipped. With llama.cpp synced and
+CMake installed it builds the real host library and runs the three CTest cases
+(2 core tests + the bridge smoke). The separate manual `engine-android` workflow
+builds the actual arm64 APK through the Android NDK and checks the packaged JNI
+library. Normal CI remains llama-free. CI runs the default checks as its own
 `native` job so a native regression fails fast and separately from Gradle.
 
 ## 9. Troubleshooting
