@@ -261,6 +261,8 @@ bool ReadValue(Reader &r, int version, GgufType type, GgufValue *out, uint64_t d
             }
             return false;  // unknown element type -> stop, treat header as truncated
         }
+        case GgufType::kTypeCount:
+            return false;  // sentinel is never a GGUF value
     }
     return false;
 }

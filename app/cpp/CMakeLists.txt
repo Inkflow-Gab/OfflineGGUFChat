@@ -81,7 +81,15 @@ if(OFFLINEGGUF_WITH_LLAMA)
     include(CheckCXXSourceCompiles)
     set(OFFLINEGGUF_LLAMA_INCLUDES
         ${LLAMA_CPP_DIR}/include ${LLAMA_CPP_DIR} ${LLAMA_CPP_DIR}/ggml/include)
-    set(OFFLINEGGUF_PROBE_FLAGS "-std=c++17 -fsyntax-only -w")
+    # These are compile-time API-shape probes, not link tests: the snippets do
+    # not link against llama, and some only take the address of a symbol. A
+    # STATIC_LIBRARY try-compile checks the source without requiring those
+    # symbols to resolve. Do not use -fsyntax-only here: CMake still runs a
+    # linker step for its default executable probe, and syntax-only produces no
+    # object file for that step (making every API probe fail on every toolchain).
+    set(OFFLINEGGUF_TRY_COMPILE_OLD "${CMAKE_TRY_COMPILE_TARGET_TYPE}")
+    set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+    set(OFFLINEGGUF_PROBE_FLAGS "-std=c++17 -w")
 
     function(ogg_probe name code)
         set(EXTRA_INCLUDES_OLD "${CMAKE_REQUIRED_INCLUDES}")
@@ -151,6 +159,9 @@ if(OFFLINEGGUF_WITH_LLAMA)
     ogg_probe(OFFLINEGGUF_LLAMA_HAS_ADAPTER_LORA
               "llama_model * m = nullptr; (void)llama_adapter_lora_init(m, \"\");")
 
+    set(CMAKE_TRY_COMPILE_TARGET_TYPE "${OFFLINEGGUF_TRY_COMPILE_OLD}")
+    unset(OFFLINEGGUF_TRY_COMPILE_OLD)
+
     set(OFFLINEGGUF_BRIDGE_SOURCES llama/llama_bridge_llama.cpp)
     set(OFFLINEGGUF_HAVE_LLAMA 1)
     message(STATUS "OfflineGGUFChat: llama.cpp backend ENABLED (${OFFLINEGGUF_LLAMA_TARGET})")
@@ -207,4 +218,23 @@ if(OFFLINEGGUF_HOST_TESTS)
     add_executable(utf8_test tests/utf8_test.cpp)
     target_include_directories(utf8_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME utf8_test COMMAND utf8_test)
+
+    # If the optional engine checkout is present, compile and exercise the real
+    # bridge too. This host smoke test needs no Android JNI headers and no model
+    # download; it proves the native bridge calls the pinned llama.cpp library,
+    # reports its version, owns a session, and fails an invalid model load cleanly.
+    if(OFFLINEGGUF_HAVE_LLAMA)
+        add_executable(llama_bridge_smoke
+            tests/llama_bridge_smoke.cpp
+            llama/llama_bridge_llama.cpp)
+        target_include_directories(llama_bridge_smoke PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/llama)
+        target_compile_definitions(llama_bridge_smoke PRIVATE
+            OFFLINEGGUF_HAVE_LLAMA=1
+            ${OFFLINEGGUF_LLAMA_DEFINES})
+        target_compile_options(llama_bridge_smoke PRIVATE ${OFFLINEGGUF_WARNINGS})
+        target_link_libraries(llama_bridge_smoke PRIVATE ${OFFLINEGGUF_LLAMA_TARGET})
+        add_test(NAME llama_bridge_smoke COMMAND llama_bridge_smoke)
+    endif()
 endif()

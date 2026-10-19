@@ -137,15 +137,42 @@ fi
 
 # ------------------------------------------- 5. optional: the real bridge
 LLAMA_DIR="${OFFLINEGGUF_LLAMA_DIR:-$ROOT/app/llama-cpp}"
-if [[ -f "$LLAMA_DIR/include/llama.h" && "${#JNI_INCLUDES[@]}" -gt 0 ]]; then
-    say "==> bridge-llama (found $LLAMA_DIR)"
-    # Capability probes are CMake's job; here we only check the file still parses.
-    # Capability probes (OFFLINEGGUF_LLAMA_HAS_*) are CMake's job; without them
-    # the newest symbols are assumed present, which is right for the pinned tag.
-    step bridge-llama-syntax \
-        "$CXX_BIN" "${CXXFLAGS[@]}" "${JNI_INCLUDES[@]}" -I"$OUT/host-stub" \
-        -I"$LLAMA_DIR/include" -I"$LLAMA_DIR/ggml/include" \
-        -DOFFLINEGGUF_HAVE_LLAMA=1 -fsyntax-only "$CPP/llama/llama_bridge_llama.cpp"
+if [[ -f "$LLAMA_DIR/include/llama.h" ]]; then
+    if ! command -v cmake >/dev/null 2>&1; then
+        skip bridge-llama "llama.cpp is present but CMake is not installed"
+    else
+        LLAMA_BUILD="$OUT/bridge-llama-build"
+        say "==> bridge-llama (found $LLAMA_DIR; exercising the real library)"
+        if cmake -S "$CPP" -B "$LLAMA_BUILD" \
+            -DOFFLINEGGUF_WITH_LLAMA=ON \
+            -DLLAMA_CPP_DIR="$LLAMA_DIR" \
+            -DOFFLINEGGUF_HOST_TESTS=ON \
+            -DGGML_NATIVE=OFF \
+            -DLLAMA_CURL=OFF >"$OUT/bridge-llama-configure.log" 2>&1; then
+            say "    configured (see $OUT/bridge-llama-configure.log)"
+            if cmake --build "$LLAMA_BUILD" --target llama_bridge_smoke gguf_probe_test utf8_test -j 2 \
+                >"$OUT/bridge-llama-build.log" 2>&1; then
+                say "    built the llama.cpp-backed bridge and host tests"
+                if ctest --test-dir "$LLAMA_BUILD" --output-on-failure \
+                    >"$OUT/bridge-llama-test.log" 2>&1; then
+                    cat "$OUT/bridge-llama-test.log" | sed 's/^/      /'
+                    PASSED=$((PASSED + 1))
+                else
+                    echo "    FAILED — real llama.cpp bridge tests (see $OUT/bridge-llama-test.log)"
+                    tail -n 40 "$OUT/bridge-llama-test.log" | sed 's/^/      /'
+                    FAILED=$((FAILED + 1))
+                fi
+            else
+                echo "    FAILED — building the real llama.cpp bridge (see $OUT/bridge-llama-build.log)"
+                tail -n 40 "$OUT/bridge-llama-build.log" | sed 's/^/      /'
+                FAILED=$((FAILED + 1))
+            fi
+        else
+            echo "    FAILED — configuring the real llama.cpp bridge (see $OUT/bridge-llama-configure.log)"
+            tail -n 40 "$OUT/bridge-llama-configure.log" | sed 's/^/      /'
+            FAILED=$((FAILED + 1))
+        fi
+    fi
 else
     skip bridge-llama "llama.cpp not present (run scripts/sync-llama.sh to enable it)"
 fi
