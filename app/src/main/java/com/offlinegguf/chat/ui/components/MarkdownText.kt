@@ -54,7 +54,10 @@ fun MarkdownText(
     previousCode: Map<Int, String> = emptyMap(),
     showLineNumbers: Boolean = true,
     textColor: Color? = null,
+    /** While tokens are still arriving, expensive per-revision work is skipped. */
+    streaming: Boolean = false,
     onSaveCode: (content: String, fileName: String) -> Unit = { _, _ -> },
+    onRunCode: ((content: String, fileName: String, language: String) -> Unit)? = null,
 ) {
     val blocks = remember(text) { MarkdownBlocks.parse(text) }
     val spacing = OfflineGgufTheme.spacing
@@ -95,10 +98,12 @@ fun MarkdownText(
                         content = block.content,
                         language = block.language,
                         filename = block.filename,
-                        previous = previousCode[codeIndex],
+                        previous = if (streaming) null else previousCode[codeIndex],
                         showLineNumbers = showLineNumbers,
                         terminated = block.terminated,
+                        streaming = streaming,
                         onSaveCode = onSaveCode,
+                        onRunCode = onRunCode,
                     )
                 }
 

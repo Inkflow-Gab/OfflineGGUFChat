@@ -12,6 +12,7 @@
 #include <jni.h>
 
 #include <algorithm>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -191,6 +192,19 @@ enum StatsSlot {
     kStatsContextUsed,
     kStatsMicros,
     kStatsFlags,  // bit 0: truncated, bit 1: cancelled
+    // Latency breakdown. Appended rather than reordering so an older Kotlin
+    // side reading only the first five keeps working.
+    kStatsTokenizeMicros,
+    kStatsPrefillMicros,
+    kStatsFirstTokenMicros,
+    kStatsDecodeMicros,
+    kStatsPrefillTokens,
+    kStatsReusedTokens,
+    kStatsDecodeCalls,
+    kStatsCtx,
+    kStatsThreads,
+    kStatsBatch,
+    kStatsPrefillThreads,
     kStatsCount
 };
 
@@ -300,8 +314,8 @@ Java_com_offlinegguf_chat_inference_LlamaNative_nativeDestroySession(JNIEnv *, j
 JNIEXPORT jboolean JNICALL
 Java_com_offlinegguf_chat_inference_LlamaNative_nativeLoadModel(
     JNIEnv *env, jobject, jlong handle, jstring path, jint n_ctx, jint n_gpu_layers,
-    jint n_threads, jint n_batch, jboolean use_mmap, jboolean use_mlock, jobjectArray lora_paths,
-    jfloatArray lora_scales) {
+    jint n_threads, jint n_batch, jboolean use_mmap, jboolean use_mlock, jstring kv_type_k,
+    jstring kv_type_v, jobjectArray lora_paths, jfloatArray lora_scales) {
     ogg::BridgeSession *session = Resolve(handle);
     if (!session) {
         LOGE("nativeLoadModel: invalid session handle");
@@ -315,6 +329,10 @@ Java_com_offlinegguf_chat_inference_LlamaNative_nativeLoadModel(
     params.n_batch = n_batch;
     params.use_mmap = use_mmap == JNI_TRUE;
     params.use_mlock = use_mlock == JNI_TRUE;
+    params.kv_type_k = JStringToUtf8(env, kv_type_k);
+    params.kv_type_v = JStringToUtf8(env, kv_type_v);
+    if (params.kv_type_k.empty()) params.kv_type_k = "f16";
+    if (params.kv_type_v.empty()) params.kv_type_v = "f16";
 
     const std::vector<std::string> loras = JStringArrayToVector(env, lora_paths);
     if (!loras.empty() && lora_scales != nullptr) {
@@ -328,8 +346,18 @@ Java_com_offlinegguf_chat_inference_LlamaNative_nativeLoadModel(
     }
 
     std::string error;
+    const auto load_started = std::chrono::steady_clock::now();
     const bool ok = ogg::BridgeLoad(session, JStringToUtf8(env, path), params, &error);
-    if (!ok) LOGE("model load failed: %s", error.c_str());
+    const auto load_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::steady_clock::now() - load_started)
+                             .count();
+    if (!ok) {
+        LOGE("model load failed: %s", error.c_str());
+    } else {
+        LOGI("model loaded in %lld ms (n_ctx=%d threads=%d batch=%d kv=%s)",
+             static_cast<long long>(load_ms), n_ctx, n_threads, n_batch,
+             params.kv_type_k.c_str());
+    }
     return ok ? JNI_TRUE : JNI_FALSE;
 }
 
@@ -480,6 +508,17 @@ Java_com_offlinegguf_chat_inference_LlamaNative_nativeGenerate(
         stats.context_used,
         stats.microseconds,
         (stats.truncated ? 1 : 0) | (stats.cancelled ? 2 : 0),
+        stats.tokenize_micros,
+        stats.prefill_micros,
+        stats.first_token_micros,
+        stats.decode_micros,
+        stats.prefill_tokens,
+        stats.reused_tokens,
+        stats.decode_calls,
+        stats.n_ctx,
+        stats.n_threads,
+        stats.n_batch,
+        stats.n_threads_batch,
     };
     env->SetLongArrayRegion(result, 0, kStatsCount, values);
     return result;

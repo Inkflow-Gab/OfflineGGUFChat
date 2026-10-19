@@ -77,6 +77,10 @@ data class ChatUiState(
     val fit: ModelFit.Assessment? = null,
     val templateStyle: TemplateStyle = TemplateStyle.GENERIC,
     val editingMessageId: Long? = null,
+    /** The resident model has a reasoning mode the app can switch off. */
+    val modelSupportsThinking: Boolean = false,
+    /** Timing breakdown of the most recent generation, for the diagnostics sheet. */
+    val lastTrace: com.offlinegguf.chat.inference.InferenceTrace? = null,
 ) {
     /** Shown instead of the transcript when there is nothing to talk to yet. */
     val showEngineOnboarding: Boolean
@@ -96,6 +100,11 @@ internal fun ChatUiState.withLoadedModel(
 ): ChatUiState = copy(
     model = model,
     loadingModel = false,
+    // The entity carries the architecture, which is enough to recognise a
+    // reasoning family even when the model was loaded from another screen and
+    // this ViewModel never saw the GGUF probe.
+    modelSupportsThinking = model != null &&
+        (modelSupportsThinking || PromptFormatter.supportsThinking(model.architecture, null)),
     contextSize = contextSize.coerceAtLeast(0),
     contextUsed = contextUsed.coerceIn(0, contextSize.coerceAtLeast(0)),
     error = if (model == null) error else null,
@@ -277,6 +286,15 @@ class ChatViewModel(
 
     fun consumeNotice() = _state.update { it.copy(notice = null) }
 
+    /**
+     * Turn the model's reasoning mode on or off. Off is the default: it is the
+     * difference between an answer in seconds and a hidden thinking block that
+     * can run for minutes on a phone.
+     */
+    fun setLocalReasoning(enabled: Boolean) {
+        viewModelScope.launch { container.settings.setLocalReasoning(enabled) }
+    }
+
     /** For failures or successes the UI hits directly, such as code-file export. */
     fun reportError(message: String) = _state.update { it.copy(error = message) }
 
@@ -330,6 +348,9 @@ class ChatViewModel(
                     context = model.nCtx.takeIf { it > 0 },
                     threads = model.threads.takeIf { it > 0 }?.coerceAtMost(profile.suggestedThreads),
                     batch = model.batch.takeIf { it > 0 }?.coerceAtMost(profile.suggestedBatch),
+                    // The per-model cache type was stored and shown in Model
+                    // Detail but never reached the engine; it does now.
+                    kvType = model.kvType.ifBlank { ModelFit.DEFAULT_KV_TYPE },
                     storageFreeBytes = profile.freeStorageBytes,
                 ),
             )
@@ -367,6 +388,7 @@ class ChatViewModel(
                     // request layers that the native backend cannot provide.
                     gpuLayers = 0,
                     useMmap = true,
+                    kvType = tuned.kvType,
                 ),
             )
 
@@ -385,7 +407,11 @@ class ChatViewModel(
                             architecture = probe.architecture,
                             chatTemplate = report.chatTemplate.ifBlank { probe.chatTemplate },
                         ),
-                        notice = if (!announce) null else if ((model.nCtx.takeIf { it > 0 } ?: profile.suggestedContext) > tuned.context) {
+                        modelSupportsThinking = PromptFormatter.supportsThinking(
+                            architecture = probe.architecture,
+                            chatTemplate = report.chatTemplate.ifBlank { probe.chatTemplate },
+                        ),
+                        notice = if (!announce || result.alreadyLoaded) null else if ((model.nCtx.takeIf { it > 0 } ?: profile.suggestedContext) > tuned.context) {
                             "Loaded ${model.displayName} with context reduced to " +
                                 "${Formats.contextTokens(tuned.context.toLong())} to protect this phone's memory."
                         } else {
@@ -526,6 +552,13 @@ class ChatViewModel(
     ) {
         generationJob?.cancel()
         generationJob = viewModelScope.launch {
+            // Wall clock from the moment the send was accepted, so the trace
+            // covers everything the user experiences, not just native time.
+            val sendStartedNanos = System.nanoTime()
+            var firstTokenNanos = 0L
+            var firstRenderNanos = 0L
+            var reasoningChars = 0
+            var answerChars = 0
             val snapshot = _state.value
             val conversationId = snapshot.conversationId
             // Exactly one of these drives the generation: a picked cloud model
@@ -572,12 +605,28 @@ class ChatViewModel(
                     ?: model?.nCtx?.takeIf { it > 0 }
                     ?: container.deviceProfile.suggestedContext
             }
-            val window = PromptWindow.fit(system, turns, promptContext, sampling.maxTokens)
-            val prompt = PromptFormatter.render(
-                style = snapshot.templateStyle,
-                system = system,
-                turns = window.turns,
-            )
+            // Windowing and prompt rendering are pure string work over the
+            // whole transcript; on long chats that is real CPU, so it runs off
+            // the main thread and the composer stays responsive.
+            val promptStartedNanos = System.nanoTime()
+            val window = withContext(Dispatchers.Default) {
+                PromptWindow.fit(system, turns, promptContext, sampling.maxTokens)
+            }
+            // A thinking model that is allowed to reason can spend minutes
+            // generating hidden tokens before the first visible word. The
+            // switch uses the model's own template to answer directly; the
+            // setting is off by default and only applies to models that have
+            // a reasoning mode at all.
+            val reasoningOn = snapshot.modelSupportsThinking && settings.localReasoning
+            val prompt = withContext(Dispatchers.Default) {
+                PromptFormatter.render(
+                    style = snapshot.templateStyle,
+                    system = system,
+                    turns = window.turns,
+                    reasoning = reasoningOn,
+                )
+            }
+            val promptBuildMs = (System.nanoTime() - promptStartedNanos) / 1_000_000L
             val windowNotice = when {
                 window.droppedTurns > 0 && window.clippedLatestTurn ->
                     "Using recent turns; older chat and part of the newest turn are omitted to fit this model's context. The full transcript is saved."
@@ -644,11 +693,14 @@ class ChatViewModel(
                 engine.stream(prompt, sampling)
             }
 
+            val engineStartedNanos = System.nanoTime()
             events.collect { event ->
                 when (event) {
                     is EngineEvent.Token -> {
+                        if (firstTokenNanos == 0L) firstTokenNanos = System.nanoTime()
                         val out = thinking.offer(event.text)
                         if (out.thinking.isNotEmpty()) {
+                            reasoningChars += out.thinking.length
                             reasoning.append(out.thinking)
                             if (thinkingCoalescer.offer(out.thinking) != null) {
                                 _state.update {
@@ -659,11 +711,13 @@ class ChatViewModel(
                             }
                         }
                         if (out.answer.isNotEmpty()) {
+                            answerChars += out.answer.length
                             answer.append(out.answer)
                             // Repaint at the smooth UI cadence, but persist separately
                             // below. Re-querying an entire long transcript on every
                             // tiny stream update is costly on low-end phones.
                             if (coalescer.offer(out.answer) != null) {
+                                if (firstRenderNanos == 0L) firstRenderNanos = System.nanoTime()
                                 _state.update {
                                     if (it.streamingMessageId == assistantId) {
                                         it.copy(streamingText = answer.toString())
@@ -729,6 +783,47 @@ class ChatViewModel(
             lastPromptTokens = if (existingMessageId != null) 0 else stats.promptTokens
             lastAnswerTokens = if (existingMessageId != null) 0 else stats.tokensGenerated
 
+            val wallMs = (System.nanoTime() - sendStartedNanos) / 1_000_000L
+            // Queue wait only means something locally: the native clock starts
+            // when BridgeGenerate begins. A cloud request's "queue" is the
+            // network, which the HTTP stats already cover.
+            val queueMs = when {
+                cloud != null -> 0L
+                firstTokenNanos == 0L -> wallMs
+                else -> (((firstTokenNanos - engineStartedNanos) / 1_000_000L) - stats.firstTokenMs)
+                    .coerceAtLeast(0L)
+            }
+            val trace = com.offlinegguf.chat.inference.InferenceTrace(
+                promptBuildMs = promptBuildMs,
+                queueMs = queueMs,
+                tokenizeMs = stats.tokenizeMs,
+                prefillMs = stats.prefillMs,
+                firstTokenMs = stats.firstTokenMs,
+                firstRenderMs = if (firstRenderNanos == 0L) wallMs else {
+                    (firstRenderNanos - sendStartedNanos) / 1_000_000L
+                },
+                totalMs = wallMs,
+                tokensGenerated = stats.tokensGenerated,
+                prefillTokens = stats.prefillTokens,
+                reusedTokens = stats.reusedTokens,
+                decodeCalls = stats.decodeCalls,
+                contextSize = if (stats.contextSize > 0) stats.contextSize else snapshot.contextSize,
+                threads = stats.threads,
+                batch = stats.batch,
+                prefillThreads = stats.prefillThreads,
+                promptChars = prompt.length,
+                estimatedPromptTokens = window.estimatedPromptTokens,
+                reasoningChars = reasoningChars,
+                answerChars = answerChars,
+                modelLoads = engine.loads,
+                reasoningEnabled = reasoningOn,
+                backend = if (cloud != null) cloud.label else engine.version,
+            )
+            // One grep-able line per generation: `adb logcat -s InferenceTrace`.
+            android.util.Log.i("InferenceTrace", trace.line())
+            val diagnosis = com.offlinegguf.chat.inference.InferenceTrace.audit(trace)
+            if (diagnosis != null) android.util.Log.w("InferenceTrace", "SLOW: $diagnosis")
+
             _state.update {
                 it.copy(
                     generating = false,
@@ -737,6 +832,7 @@ class ChatViewModel(
                     streamingThinking = "",
                     continuableMessageId = if (hitOutputCap) assistantId else null,
                     lastSpeed = stats.tokensPerSecond,
+                    lastTrace = trace,
                     contextUsed = stats.contextUsed.takeIf { used -> used > 0 }
                         ?: it.contextUsed,
                     notice = when {
@@ -745,6 +841,7 @@ class ChatViewModel(
                             "The transcript reached its context limit; older turns were dropped."
                         outcome == GenerationOutcome.CANCELLED -> "Stopped after ${stats.tokensGenerated} tokens."
                         hitOutputCap -> "Response chunk complete. Tap the play icon under the answer to continue; the model context still sets the limit."
+                        diagnosis != null -> diagnosis
                         else -> windowNotice
                     },
                 )
@@ -953,6 +1050,23 @@ class ChatViewModel(
                 }
             }
         }.getOrElse { ReadResult.Failed(it.message ?: "Could not read that file") }
+    }
+
+    // ------------------------------------------------------------ workspace
+
+    /**
+     * Save a snippet into this session's workspace. Overwrites by name, so
+     * re-saving `index.html` updates the one file instead of piling up copies.
+     */
+    fun saveCodeToWorkspace(content: String, name: String, language: String = "") {
+        val conversationId = _state.value.conversationId
+        val resolvedLanguage = language.ifBlank {
+            name.substringAfterLast('.', "").lowercase()
+        }
+        viewModelScope.launch {
+            container.workspaceRepository.save(conversationId, name, resolvedLanguage, content)
+            _state.update { it.copy(notice = "Saved “$name” to this session's workspace.") }
+        }
     }
 
     // ---------------------------------------------------------------- export

@@ -229,6 +229,57 @@ fun CloudScreen(
                                 color = colors.onSurfaceVariant,
                             )
 
+                            if (state.provider.freeTierClientLocked) {
+                                Spacer(Modifier.height(spacing.sm))
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(colors.surfaceContainerHigh, RoundedCornerShape(spacing.chip))
+                                        .padding(spacing.sm),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    Text(
+                                        text = "Free models here are app-only",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = colors.onSurface,
+                                    )
+                                    Text(
+                                        text = state.provider.label + " serves its free models only to its " +
+                                            "own app, so they answer 403 here by design. Paid models work " +
+                                            "with a Console key and credits.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = colors.onSurfaceVariant,
+                                    )
+                                    Text(
+                                        text = "Free answers that work here:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = colors.tertiary,
+                                    )
+                                    FlowRow(horizontalArrangement = Arrangement.spacedBy(spacing.sm)) {
+                                        listOf(CloudProvider.GROQ, CloudProvider.OPENROUTER, CloudProvider.NVIDIA)
+                                            .forEach { alt ->
+                                                InkChip(
+                                                    text = alt.label,
+                                                    selected = state.providerId == alt.id,
+                                                    icon = R.drawable.ic_cloud,
+                                                    onClick = { viewModel.selectProvider(alt.id) },
+                                                )
+                                            }
+                                    }
+                                    if (state.appOnlyCount > 0) {
+                                        InkChip(
+                                            text = if (state.showAppOnly) {
+                                                "Hide the ${state.appOnlyCount} app-only models"
+                                            } else {
+                                                "Show the ${state.appOnlyCount} app-only models anyway"
+                                            },
+                                            selected = state.showAppOnly,
+                                            onClick = { viewModel.setShowAppOnly(!state.showAppOnly) },
+                                        )
+                                    }
+                                }
+                            }
+
                             if (state.provider.custom) {
                                 Spacer(Modifier.height(spacing.md))
                                 OutlinedTextField(
@@ -371,16 +422,30 @@ fun CloudScreen(
                     }
                 } else if (state.visibleModels.isEmpty() && !state.loading) {
                     item(key = "empty-filter") {
+                        val hiddenAppOnly = state.provider.freeTierClientLocked &&
+                            !state.showAppOnly && state.appOnlyCount > 0
                         EmptyState(
                             icon = R.drawable.ic_search,
-                            title = "Nothing matches",
-                            body = if (state.freeOnly) {
-                                "No free model matches that search. Turn off “Free only” to see paid models too."
-                            } else {
-                                "No model matches that search."
+                            title = if (hiddenAppOnly) "No usable free models" else "Nothing matches",
+                            body = when {
+                                hiddenAppOnly ->
+                                    "The ${state.appOnlyCount} free models on ${state.provider.label} " +
+                                        "only run inside its own app. Free models that work here live " +
+                                        "under Groq, OpenRouter and NVIDIA — or show the app-only ones anyway."
+                                state.freeOnly ->
+                                    "No free model matches that search. Turn off “Free only” to see paid models too."
+                                else -> "No model matches that search."
                             },
-                            actionLabel = if (state.freeOnly) "Show all models" else null,
-                            onAction = if (state.freeOnly) ({ viewModel.setFreeOnly(false) }) else null,
+                            actionLabel = when {
+                                hiddenAppOnly -> "Show app-only models"
+                                state.freeOnly -> "Show all models"
+                                else -> null
+                            },
+                            onAction = when {
+                                hiddenAppOnly -> ({ viewModel.setShowAppOnly(true) })
+                                state.freeOnly -> ({ viewModel.setFreeOnly(false) })
+                                else -> null
+                            },
                         )
                     }
                 }
@@ -457,6 +522,9 @@ private fun CloudModelRow(
         FlowRow(horizontalArrangement = Arrangement.spacedBy(spacing.sm)) {
             if (model.isFree) {
                 InkChip(text = "FREE", selected = true, icon = R.drawable.ic_sparkle, onClick = onClick)
+            }
+            if (model.appOnly) {
+                InkChip(text = "IN-APP ONLY", onClick = onClick)
             }
             model.priceSummary?.takeIf { !model.isFree }?.let { price ->
                 InkChip(text = price, onClick = onClick)

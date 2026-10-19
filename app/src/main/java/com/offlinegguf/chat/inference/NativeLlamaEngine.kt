@@ -8,6 +8,7 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.channels.trySendBlocking
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,6 +36,8 @@ data class LoadResult(
     val message: String?,
     val report: ModelReport,
     val elapsedMs: Long,
+    /** The same file with the same settings was already resident; nothing was re-read. */
+    val alreadyLoaded: Boolean = false,
 ) {
     companion object {
         fun unavailable(message: String) = LoadResult(false, message, ModelReport.Empty, 0)
@@ -68,6 +71,18 @@ class NativeLlamaEngine : Closeable {
     private val handle = AtomicLong(0L)
     private val generating = AtomicBoolean(false)
     private val closed = AtomicBoolean(false)
+
+    /**
+     * How many times a model has actually been loaded in this process. Logged
+     * with every generation: a value that climbs per message would mean the
+     * weights are being re-mapped over and over, which is the difference
+     * between a fast reply and a multi-minute one.
+     */
+    private val loadCount = AtomicLong(0L)
+    val loads: Long get() = loadCount.get()
+
+    /** Last successful load request, used to skip a redundant re-load. */
+    private var lastLoad: LoadRequest? = null
 
     val isAvailable: Boolean get() = LlamaNative.isAvailable
 
@@ -122,6 +137,22 @@ class NativeLlamaEngine : Closeable {
                 val session = ensureSession()
                 if (session == 0L) return@withLock LoadResult.unavailable("could not create an engine session")
 
+                // Already resident with identical settings: return it instead of
+                // unloading and re-reading hundreds of megabytes. This is the
+                // difference between "open an old chat" being instant and
+                // re-mapping the model (and dropping the KV cache) every time.
+                if (lastLoad == request && _loadedModelPath.value == request.path &&
+                    runCatching { LlamaNative.nativeIsLoaded(session) }.getOrDefault(false)
+                ) {
+                    return@withLock LoadResult(
+                        success = true,
+                        message = null,
+                        report = reportLocked(session),
+                        elapsedMs = 0,
+                        alreadyLoaded = true,
+                    )
+                }
+
                 // A different model is resident: unload before loading, or the
                 // previous weights stay mapped and the process gets killed.
                 if (runCatching { LlamaNative.nativeIsLoaded(session) }.getOrDefault(false)) {
@@ -139,6 +170,8 @@ class NativeLlamaEngine : Closeable {
                         request.batch,
                         request.useMmap,
                         request.useMlock,
+                        request.kvType.ifBlank { "f16" },
+                        request.kvType.ifBlank { "f16" },
                         request.loraPaths.toTypedArray(),
                         if (request.loraScales.isEmpty()) FloatArray(0) else request.loraScales.toFloatArray(),
                     )
@@ -151,6 +184,8 @@ class NativeLlamaEngine : Closeable {
                     return@withLock LoadResult(false, message.ifBlank { "model failed to load" }, ModelReport.Empty, elapsed)
                 }
                 _loadedModelPath.value = request.path
+                lastLoad = request
+                loadCount.incrementAndGet()
                 LoadResult(true, null, reportLocked(session), elapsed)
             }
         }
@@ -164,6 +199,7 @@ class NativeLlamaEngine : Closeable {
                 requestStop()
                 runCatching { LlamaNative.nativeUnloadModel(session) }
                 _loadedModelPath.value = null
+                lastLoad = null
             }
         }
     }
@@ -233,25 +269,29 @@ class NativeLlamaEngine : Closeable {
     fun stream(prompt: String, params: SamplingParams): Flow<EngineEvent> = callbackFlow {
         val session = handle.get()
         if (!LlamaNative.libraryLoaded) {
-            trySend(EngineEvent.Failed(LlamaNative.loadError ?: "native library not loaded"))
+            send(EngineEvent.Failed(LlamaNative.loadError ?: "native library not loaded"))
             close()
             return@callbackFlow
         }
         if (session == 0L) {
-            trySend(EngineEvent.Failed("no engine session — load a model first"))
+            send(EngineEvent.Failed("no engine session — load a model first"))
             close()
             return@callbackFlow
         }
 
         val decoder = StreamingUtf8Decoder()
+        // Tokens are delivered with backpressure: a full channel blocks the
+        // decode loop briefly instead of silently discarding text, so the
+        // answer always reaches the transcript complete. Cancellation closes
+        // the channel, which unblocks the loop at the next token.
         val callback = object : LlamaNative.GenerationCallback {
             override fun onTokenBytes(bytes: ByteArray) {
                 val text = decoder.feed(bytes)
-                if (text.isNotEmpty()) trySend(EngineEvent.Token(text))
+                if (text.isNotEmpty()) runCatching { trySendBlocking(EngineEvent.Token(text)) }
             }
 
             override fun onError(message: String) {
-                trySend(EngineEvent.Failed(message))
+                runCatching { trySendBlocking(EngineEvent.Failed(message)) }
             }
         }
 
@@ -278,12 +318,12 @@ class NativeLlamaEngine : Closeable {
         }
 
         val tail = decoder.flush()
-        if (tail.isNotEmpty()) trySend(EngineEvent.Token(tail))
+        if (tail.isNotEmpty()) runCatching { send(EngineEvent.Token(tail)) }
 
         if (stats == null) {
             val message = runCatching { LlamaNative.nativeLastError(session) }
                 .getOrDefault("generation did not start")
-            trySend(EngineEvent.Failed(message.ifBlank { "generation did not start" }))
+            runCatching { send(EngineEvent.Failed(message.ifBlank { "generation did not start" })) }
         } else {
             val parsed = GenerationStats.from(stats)
             val outcome = when {
@@ -291,7 +331,7 @@ class NativeLlamaEngine : Closeable {
                 parsed.truncated -> GenerationOutcome.TRUNCATED
                 else -> GenerationOutcome.COMPLETED
             }
-            trySend(EngineEvent.Finished(parsed, outcome))
+            runCatching { send(EngineEvent.Finished(parsed, outcome)) }
         }
         close()
 

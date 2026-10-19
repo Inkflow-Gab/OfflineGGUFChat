@@ -39,6 +39,28 @@ enum class TemplateStyle(val label: String) {
 object PromptFormatter {
 
     /**
+     * Generation prompt Qwen3's own chat template emits when thinking is
+     * disabled: an *empty* thinking block. The model then answers directly.
+     *
+     * This is deliberately not "strip <think> tokens afterwards": the text the
+     * model produces is steered by its template, the way the model was trained.
+     * Models without a thinking switch never see it ([supportsThinking]).
+     */
+    const val EMPTY_THINKING_BLOCK = " thinking\n\n\n\n"
+
+    /**
+     * True when the file exposes a reasoning mode we can actually control: a
+     * template that mentions `enable_thinking`, or the Qwen3 family, which is
+     * trained to reason by default.
+     */
+    fun supportsThinking(architecture: String?, chatTemplate: String?): Boolean {
+        val arch = architecture?.lowercase().orEmpty()
+        val template = chatTemplate.orEmpty().lowercase()
+        return template.contains("enable_thinking") || arch.startsWith("qwen3") ||
+            arch == "qwen3moe" || arch == "qwen3-next"
+    }
+
+    /**
      * Picks a template from what the file told us. The embedded chat template is
      * the strongest signal; the architecture is the fallback.
      */
@@ -77,6 +99,11 @@ object PromptFormatter {
         system: String,
         turns: List<ChatTurn>,
         addBos: Boolean = false,
+        /**
+         * false = ask a thinking-capable model to answer directly. Ignored by
+         * formats and models that have no reasoning mode at all.
+         */
+        reasoning: Boolean = true,
     ): String {
         val cleaned = turns.filter { it.content.isNotBlank() || it.isAssistant }
         val sys = system.trim()
@@ -90,6 +117,10 @@ object PromptFormatter {
                         .append(turn.content).append("<|im_end|>\n")
                 }
                 builder.append("<|im_start|>assistant\n")
+                // Qwen3: an empty think block is the template's own way of
+                // saying "no reasoning", so the model starts the answer instead
+                // of spending hundreds of tokens thinking first.
+                if (!reasoning) builder.append(EMPTY_THINKING_BLOCK)
             }
 
             TemplateStyle.LLAMA3 -> {

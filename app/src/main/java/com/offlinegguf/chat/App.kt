@@ -58,6 +58,11 @@ class AppContainer(private val context: Context) {
     val modelRepository: ModelRepository by lazy { ModelRepository(context, database) }
     val skillRepository: SkillRepository by lazy { SkillRepository(database) }
 
+    /** One workspace per session history; see WorkspaceRepository. */
+    val workspaceRepository: com.offlinegguf.chat.data.repository.WorkspaceRepository by lazy {
+        com.offlinegguf.chat.data.repository.WorkspaceRepository(database)
+    }
+
     val catalog: ModelCatalog by lazy { CatalogStore.load(context) }
 
     val advisor: ModelAdvisor get() = ModelAdvisor
@@ -106,6 +111,23 @@ class AppContainer(private val context: Context) {
 
     fun clearPendingPrompt() {
         _pendingPrompt.value = null
+    }
+
+    /**
+     * The snippet the sandbox should run, set when the user taps the play icon
+     * on a web code block (or opens a workspace file). Carried here rather than
+     * in a route argument because code is large and arbitrary.
+     */
+    private val _pendingSandbox =
+        MutableStateFlow<com.offlinegguf.chat.data.workspace.SandboxRequest?>(null)
+    val pendingSandbox: StateFlow<com.offlinegguf.chat.data.workspace.SandboxRequest?> = _pendingSandbox
+
+    fun requestSandbox(request: com.offlinegguf.chat.data.workspace.SandboxRequest?) {
+        if (request != null) _pendingSandbox.value = request
+    }
+
+    fun clearPendingSandbox() {
+        _pendingSandbox.value = null
     }
 
     /**

@@ -10,6 +10,12 @@ data class LoadRequest(
     val gpuLayers: Int = 0,
     val useMmap: Boolean = true,
     val useMlock: Boolean = false,
+    /**
+     * KV-cache element type, "f16" or "q8_0". Honoured by the native context:
+     * q8_0 roughly halves the cache, which keeps the weights resident on a
+     * memory-tight phone instead of paging them back in on every token.
+     */
+    val kvType: String = "f16",
     val loraPaths: List<String> = emptyList(),
     val loraScales: List<Float> = emptyList(),
 )
@@ -81,7 +87,28 @@ data class GenerationStats(
     val microseconds: Long = 0,
     val truncated: Boolean = false,
     val cancelled: Boolean = false,
+    // ---- latency breakdown, straight from the engine -----------------------
+    /** Tokenizer only. Milliseconds. */
+    val tokenizeMs: Long = 0,
+    /** Prompt evaluation (the KV-miss part). Milliseconds. */
+    val prefillMs: Long = 0,
+    /** Generate start → first text handed to the UI pipeline. Milliseconds. */
+    val firstTokenMs: Long = 0,
+    /** Sum of the steady-state per-token decodes. Milliseconds. */
+    val decodeMs: Long = 0,
+    val prefillTokens: Int = 0,
+    val reusedTokens: Int = 0,
+    val decodeCalls: Int = 0,
+    val contextSize: Int = 0,
+    val threads: Int = 0,
+    val batch: Int = 0,
+    /** Workers used for prompt processing; 0 when the native build did not say. */
+    val prefillThreads: Int = 0,
 ) {
+    /** Decode-only speed, excluding prompt evaluation and the first-token wait. */
+    val decodeTokensPerSecond: Double
+        get() = if (decodeMs > 0 && tokensGenerated > 0) tokensGenerated * 1000.0 / decodeMs else 0.0
+
     val tokensPerSecond: Double
         get() = if (microseconds > 0 && tokensGenerated > 0) {
             tokensGenerated / (microseconds / 1_000_000.0)
@@ -103,6 +130,19 @@ data class GenerationStats(
                 microseconds = values[3],
                 truncated = flags and FLAG_TRUNCATED.toLong() != 0L,
                 cancelled = flags and FLAG_CANCELLED.toLong() != 0L,
+                // Older native builds returned five slots; keep defaults when
+                // the breakdown is absent instead of inventing numbers.
+                tokenizeMs = values.getOrNull(5)?.div(1_000) ?: 0,
+                prefillMs = values.getOrNull(6)?.div(1_000) ?: 0,
+                firstTokenMs = values.getOrNull(7)?.div(1_000) ?: 0,
+                decodeMs = values.getOrNull(8)?.div(1_000) ?: 0,
+                prefillTokens = values.getOrNull(9)?.toInt() ?: 0,
+                reusedTokens = values.getOrNull(10)?.toInt() ?: 0,
+                decodeCalls = values.getOrNull(11)?.toInt() ?: 0,
+                contextSize = values.getOrNull(12)?.toInt() ?: 0,
+                threads = values.getOrNull(13)?.toInt() ?: 0,
+                batch = values.getOrNull(14)?.toInt() ?: 0,
+                prefillThreads = values.getOrNull(15)?.toInt() ?: 0,
             )
         }
     }

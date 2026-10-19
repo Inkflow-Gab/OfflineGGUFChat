@@ -10,6 +10,7 @@
 #pragma once
 
 #include <llama.h>
+#include <ggml.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -65,13 +66,42 @@ inline llama_context *InitContext(llama_model *model, llama_context_params &p) {
 #endif
 }
 
-inline void SetContextThreads(llama_context_params &p, int32_t threads) {
-#if defined(OFFLINEGGUF_LLAMA_HAS_CTX_THREADS)
-    p.n_threads = threads;
-    p.n_threads_batch = threads > 0 ? threads : p.n_threads_batch;
+/**
+ * KV-cache element types. Quantised K/V cuts the cache in half or better on a
+ * memory-tight phone, which is the difference between the weights staying
+ * resident and being paged back in on every token.
+ */
+inline void SetKvCacheType(llama_context_params &p, const std::string &type_k,
+                           const std::string &type_v) {
+#if defined(OFFLINEGGUF_LLAMA_HAS_KV_TYPE)
+    auto parse = [](const std::string &name, ggml_type fallback) {
+        if (name == "q8_0") return GGML_TYPE_Q8_0;
+        if (name == "q4_0") return GGML_TYPE_Q4_0;
+        if (name == "q4_1") return GGML_TYPE_Q4_1;
+        if (name == "q5_0") return GGML_TYPE_Q5_0;
+        if (name == "q5_1") return GGML_TYPE_Q5_1;
+        if (name == "bf16") return GGML_TYPE_BF16;
+        if (name == "f32") return GGML_TYPE_F32;
+        if (name == "f16") return GGML_TYPE_F16;
+        return fallback;
+    };
+    p.type_k = parse(type_k, GGML_TYPE_F16);
+    p.type_v = parse(type_v, GGML_TYPE_F16);
 #else
     (void)p;
-    (void)threads;  // newer builds configure threads on the CPU backend
+    (void)type_k;
+    (void)type_v;
+#endif
+}
+
+inline void SetContextThreads(llama_context_params &p, int32_t threads, int32_t threads_batch) {
+#if defined(OFFLINEGGUF_LLAMA_HAS_CTX_THREADS)
+    p.n_threads = threads;
+    p.n_threads_batch = threads_batch > 0 ? threads_batch : (threads > 0 ? threads : p.n_threads_batch);
+#else
+    (void)p;
+    (void)threads;
+    (void)threads_batch;  // newer builds configure threads on the CPU backend
 #endif
 }
 

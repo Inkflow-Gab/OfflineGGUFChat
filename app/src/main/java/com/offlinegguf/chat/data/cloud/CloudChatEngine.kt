@@ -8,7 +8,6 @@ import com.offlinegguf.chat.inference.SamplingParams
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.atomic.AtomicReference
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -45,7 +44,9 @@ class CloudChatEngine {
         runCatching {
             val base = provider.resolveBaseUrl(customBaseUrl)
             require(base.isNotBlank()) { "Set the server URL first" }
-            val connection = open("$base/models", apiKey, provider)
+            // OpenCode Console publishes its catalog at /inference/v1/models,
+            // not under the OpenAI-compatible chat root.
+            val connection = open(provider.modelsUrl ?: "$base/models", apiKey, provider)
             try {
                 val code = connection.responseCode
                 val body = readBody(connection, code)
@@ -62,6 +63,11 @@ class CloudChatEngine {
     /**
      * Stream one chat completion. [turns] are the already-windowed conversation
      * (oldest first); [system] is prepended as the system message when non-blank.
+     *
+     * Delivery guarantees: every token is handed to the collector with
+     * backpressure (`send`, never lossy `trySend`), so a burst of output can
+     * never silently drop text or the final [EngineEvent.Finished] — the bug
+     * that used to truncate cloud answers mid-sentence on busy phones.
      */
     fun stream(
         provider: CloudProvider,
@@ -73,11 +79,12 @@ class CloudChatEngine {
         sampling: SamplingParams,
     ): Flow<EngineEvent> = callbackFlow {
         val connectionRef = AtomicReference<HttpURLConnection?>(null)
-        val job = CoroutineScope(Dispatchers.IO).launch {
+        val job = launch(Dispatchers.IO) {
             val started = System.nanoTime()
             var answerChars = 0
             var promptTokens = 0
             var completionTokens = 0
+            var finishedEarly = false
             try {
                 val base = provider.resolveBaseUrl(customBaseUrl)
                 require(base.isNotBlank()) { "Set the server URL in the Cloud tab first" }
@@ -95,37 +102,72 @@ class CloudChatEngine {
                 }
                 val code = connection.responseCode
                 if (code !in 200..299) {
-                    trySend(EngineEvent.Failed(CloudModels.parseError(readBody(connection, code), code)))
-                    close()
+                    val body = readBody(connection, code)
+                    this@callbackFlow.emitFailed(
+                        CloudModels.describeFailure(body, code, provider.label, modelId),
+                    )
                     return@launch
                 }
-                connection.inputStream.bufferedReader(Charsets.UTF_8).useLines { lines ->
-                    for (line in lines) {
-                        if (!line.startsWith("data:")) continue
-                        val delta = CloudModels.parseChunk(line.removePrefix("data:")) ?: continue
-                        if (delta.promptTokens > 0) promptTokens = delta.promptTokens
-                        if (delta.completionTokens > 0) completionTokens = delta.completionTokens
-                        if (delta.reasoning.isNotEmpty()) {
-                            trySend(EngineEvent.Token("<think>${delta.reasoning}</think>"))
-                        }
-                        if (delta.content.isNotEmpty()) {
-                            answerChars += delta.content.length
-                            trySend(EngineEvent.Token(delta.content))
+
+                val contentType = connection.contentType.orEmpty().lowercase()
+                if ("event-stream" in contentType || contentType.isBlank()) {
+                    connection.inputStream.bufferedReader(Charsets.UTF_8).useLines { lines ->
+                        for (line in lines) {
+                            val payload = when {
+                                line.startsWith("data:") -> line.removePrefix("data:").trimStart()
+                                // Tolerate proxies that drop the `data:` prefix.
+                                line.startsWith("{") -> line
+                                else -> ""
+                            }
+                            if (payload.isEmpty()) continue
+                            val delta = CloudModels.parseChunk(payload) ?: continue
+                            if (delta.promptTokens > 0) promptTokens = delta.promptTokens
+                            if (delta.completionTokens > 0) completionTokens = delta.completionTokens
+                            if (delta.reasoning.isNotEmpty()) {
+                                this@callbackFlow.emitToken("<think>${delta.reasoning}</think>")
+                            }
+                            if (delta.content.isNotEmpty()) {
+                                answerChars += delta.content.length
+                                this@callbackFlow.emitToken(delta.content)
+                            }
+                            if (delta.finishReason == "length") finishedEarly = true
                         }
                     }
+                } else {
+                    // Plain JSON body: one complete message instead of SSE.
+                    val delta = CloudModels.parseCompletion(readBody(connection, code))
+                    if (delta == null) {
+                        this@callbackFlow.emitFailed("The server answered in an unexpected format.")
+                        return@launch
+                    }
+                    if (delta.promptTokens > 0) promptTokens = delta.promptTokens
+                    if (delta.completionTokens > 0) completionTokens = delta.completionTokens
+                    if (delta.reasoning.isNotEmpty()) this@callbackFlow.emitToken("<think>${delta.reasoning}</think>")
+                    if (delta.content.isNotEmpty()) {
+                        answerChars += delta.content.length
+                        this@callbackFlow.emitToken(delta.content)
+                    }
+                    if (delta.finishReason == "length") finishedEarly = true
                 }
+
                 val elapsedMicros = (System.nanoTime() - started) / 1_000
-                trySend(
-                    EngineEvent.Finished(
-                        stats = GenerationStats(
-                            // Hosts that omit usage get a chars/4 estimate — close
-                            // enough for the speed readout, never shown as billing.
-                            tokensGenerated = completionTokens.takeIf { it > 0 } ?: (answerChars / 4),
-                            promptTokens = promptTokens,
-                            microseconds = elapsedMicros,
-                        ),
-                        outcome = GenerationOutcome.COMPLETED,
+                // Hosts that omit usage get a chars/4 estimate — close enough for
+                // the speed readout, never shown as billing. When the model hit
+                // its output cap, pin the count to the cap so the UI offers
+                // "continue" even if the host reported no usage.
+                val estimate = completionTokens.takeIf { it > 0 } ?: (answerChars / 4)
+                val tokens = if (finishedEarly && estimate < sampling.maxTokens) {
+                    sampling.maxTokens
+                } else {
+                    estimate
+                }
+                this@callbackFlow.emitFinished(
+                    GenerationStats(
+                        tokensGenerated = tokens,
+                        promptTokens = promptTokens,
+                        microseconds = elapsedMicros,
                     ),
+                    GenerationOutcome.COMPLETED,
                 )
             } catch (stopped: kotlinx.coroutines.CancellationException) {
                 throw stopped
@@ -133,7 +175,7 @@ class CloudChatEngine {
                 // A disconnect from awaitClose (the Stop button) also surfaces
                 // here as an IOException; only report when someone is listening.
                 if (!isClosedForSend) {
-                    trySend(EngineEvent.Failed(friendlyError(failure)))
+                    this@callbackFlow.emitFailed(friendlyError(failure))
                 }
             } finally {
                 runCatching { connectionRef.get()?.disconnect() }
@@ -146,11 +188,34 @@ class CloudChatEngine {
         }
     }
 
+    private suspend fun kotlinx.coroutines.channels.ProducerScope<EngineEvent>.emitToken(text: String) {
+        runCatching { send(EngineEvent.Token(text)) }
+    }
+
+    private suspend fun kotlinx.coroutines.channels.ProducerScope<EngineEvent>.emitFailed(message: String) {
+        runCatching { send(EngineEvent.Failed(message)) }
+    }
+
+    private suspend fun kotlinx.coroutines.channels.ProducerScope<EngineEvent>.emitFinished(
+        stats: GenerationStats,
+        outcome: GenerationOutcome,
+    ) {
+        runCatching { send(EngineEvent.Finished(stats, outcome)) }
+    }
+
+    private companion object {
+        const val USER_AGENT = "OfflineGGUFChat/1.5 (+https://github.com/Inkflow-Gab/OfflineGGUFChat)"
+    }
+
     private fun open(url: String, apiKey: String, provider: CloudProvider): HttpURLConnection =
         (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 20_000
             readTimeout = 180_000
             setRequestProperty("Content-Type", "application/json")
+            // Identify ourselves honestly. OpenCode's docs ask third-party
+            // agents to send their own user agent rather than pretending to be
+            // the official client — which is exactly what this string does.
+            setRequestProperty("User-Agent", USER_AGENT)
             if (apiKey.isNotBlank()) setRequestProperty("Authorization", "Bearer $apiKey")
             if (provider.id == CloudProvider.OPENROUTER.id) {
                 // Optional attribution headers OpenRouter asks apps to send.

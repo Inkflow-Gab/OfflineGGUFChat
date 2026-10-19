@@ -21,8 +21,30 @@ object CloudModels {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
-    /** Hosts whose personal keys are free to use for chat (no per-token price). */
+    /** Hosts whose whole chat catalog is free with a personal key. */
     private val freeTierProviders = setOf("groq", "nvidia")
+
+    /**
+     * Free with a personal key, per model where a host mixes tiers.
+     *
+     * Gemini is the reason this is not a provider-wide flag: AI Studio's free
+     * tier covers the Flash models, not Pro. Labelling a paid model "FREE"
+     * walks someone into a billing prompt, so the claim is narrowed here.
+     */
+    private fun isFreeWithKey(providerId: String, id: String): Boolean = when (providerId) {
+        "gemini" -> "flash" in id.lowercase()
+        "cerebras" -> true
+        "mistral" -> true
+        else -> providerId in freeTierProviders
+    }
+
+    /**
+     * Model ids that are free on a metered host. OpenCode Zen's `big-pickle` has
+     * no `-free` suffix but is free for the whole stealth period, and Zen names
+     * its rotating free tier with a `-free` suffix (OpenRouter uses `:free`).
+     */
+    fun isFreeId(id: String): Boolean =
+        id.endsWith(":free") || id.endsWith("-free") || id == "big-pickle"
 
     /**
      * The `data` array of a `/models` response → sorted [CloudModel]s.
@@ -30,26 +52,104 @@ object CloudModels {
      * can actually run without paying.
      */
     fun parseModels(body: String, providerId: String): List<CloudModel> {
-        val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return emptyList()
-        val data = runCatching { root["data"]?.jsonArray }.getOrNull() ?: return emptyList()
-        val freeTier = providerId in freeTierProviders
+        val root = runCatching { json.parseToJsonElement(body) }.getOrNull() ?: return emptyList()
+        // OpenAI `{"data":[…]}`, some hosts `{"models":[…]}`, others a bare array.
+        val data = runCatching { root.jsonArray }.getOrNull()
+            ?: runCatching { root.jsonObject["data"]?.jsonArray }.getOrNull()
+            ?: runCatching { root.jsonObject["models"]?.jsonArray }.getOrNull()
+            ?: return emptyList()
+        val zen = providerId == "opencode"
+        val gemini = providerId == "gemini"
         return data.mapNotNull { element ->
             val obj = runCatching { element.jsonObject }.getOrNull() ?: return@mapNotNull null
-            val id = obj.string("id")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val rawId = obj.string("id")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            // Catalogs sometimes carry a provider path prefix: Gemini lists
+            // `models/gemini-3.8-flash`, OpenCode lists `opencode/big-pickle`.
+            // The compat endpoints want the bare id.
+            val id = when {
+                gemini -> rawId.removePrefix("models/")
+                zen -> rawId.removePrefix("opencode/")
+                else -> rawId
+            }
+            // Gemini's catalog also carries embeddings, TTS, image and video
+            // models; none of them answer a chat/completions request.
+            if (gemini && !isGeminiChatModel(id)) return@mapNotNull null
+            // Mistral/Cerebras list embedding models in the same catalog.
+            if (!gemini && id.contains("embed", ignoreCase = true)) return@mapNotNull null
+            // Zen also lists /responses- and /messages-only models. Our client
+            // speaks chat/completions, so offering those would guarantee a 400.
+            if (zen && !isChatCompletionsModel(id)) return@mapNotNull null
             val pricing = runCatching { obj["pricing"]?.jsonObject }.getOrNull()
             val promptPrice = pricing?.string("prompt")?.toDoubleOrNull()
             val completionPrice = pricing?.string("completion")?.toDoubleOrNull()
             val zeroPriced = promptPrice != null && completionPrice != null &&
                 promptPrice <= 0.0 && completionPrice <= 0.0
+            val name = obj.string("name") ?: id
+            val free = zeroPriced || isFreeId(id) || name.contains("Free") ||
+                isFreeWithKey(providerId, id)
             CloudModel(
                 id = id,
-                name = obj.string("name") ?: id,
-                contextLength = obj.int("context_length") ?: obj.int("context_window") ?: 0,
+                name = name,
+                contextLength = obj.int("context_length") ?: obj.int("context_window")
+                    ?: obj.int("max_context_length") ?: 0,
                 promptPrice = promptPrice,
                 completionPrice = completionPrice,
-                isFree = zeroPriced || id.endsWith(":free") || freeTier,
+                isFree = free,
+                appOnly = zen && free,
             )
         }.sortedWith(compareByDescending<CloudModel> { it.isFree }.thenBy { it.displayName.lowercase() })
+    }
+
+    /** Ids OpenCode Console serves over `/inference/openai/v1/chat/completions`. */
+    private val zenResponsesPrefixes = listOf("claude-", "gpt-", "gemini-", "grok-", "muse-spark", "jev-")
+
+    private val zenMessagesOnly = setOf(
+        "qwen3.8-flash", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus", "qwen3.5-plus",
+    )
+
+    /** Gemini ids that speak chat/completions rather than embed/images/tts. */
+    fun isGeminiChatModel(id: String): Boolean {
+        val lower = id.lowercase()
+        val excluded = listOf(
+            "embedding", "embed-", "aqa", "imagen", "veo", "tts", "image-generation",
+            "native-audio", "live-", "learnlm",
+        )
+        return excluded.none { lower.contains(it) }
+    }
+
+    fun isChatCompletionsModel(id: String): Boolean =
+        zenResponsesPrefixes.none { id.startsWith(it) } && id !in zenMessagesOnly
+
+    /**
+     * A refusal turned into something the user can act on.
+     *
+     * OpenCode's free tier answers 403 `FreeTierError` to every client that is
+     * not the OpenCode app itself. That is policy, not a bad key, and saying so
+     * — with the working alternatives — is more useful than a raw HTTP line.
+     */
+    fun describeFailure(
+        body: String,
+        httpCode: Int,
+        providerLabel: String,
+        modelId: String,
+    ): String {
+        val raw = parseError(body, httpCode)
+        val lower = body.lowercase()
+        val freeTierRefused = lower.contains("freetiererror") ||
+            lower.contains("free tier can only be used") ||
+            lower.contains("missingsessionid") ||
+            lower.contains("upgraderequired") ||
+            lower.contains("1.17.0 or newer")
+        return when {
+            freeTierRefused -> "$providerLabel keeps its free models inside its own app — " +
+                "“$modelId” is refused here by OpenCode's policy, not by a bad key. " +
+                "For free answers switch to Groq, OpenRouter or NVIDIA in the Cloud tab; " +
+                "to use this model, add credits at opencode.ai/console and pick a paid Zen model."
+            lower.contains("creditserror") || lower.contains("insufficient account funds") ->
+                "$raw — add credits to your $providerLabel account (opencode.ai/console), " +
+                    "or switch to a free provider in the Cloud tab."
+            else -> raw
+        }
     }
 
     /** Text pieces of one streamed chat-completion chunk. */
@@ -73,7 +173,21 @@ object CloudModels {
         val text = payload.trim()
         if (text.isEmpty() || text == "[DONE]" || text.startsWith(":")) return null
         val root = runCatching { json.parseToJsonElement(text).jsonObject }.getOrNull() ?: return null
+        return deltaOf(root)
+    }
 
+    /**
+     * A whole non-streamed `chat/completions` body (some proxies ignore
+     * `"stream": true` and answer with one JSON document). Same shape out of
+     * [ChunkDelta] so the caller can route it through the same path.
+     */
+    fun parseCompletion(body: String): ChunkDelta? {
+        val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return null
+        return deltaOf(root)
+    }
+
+    /** Shared reader for one SSE chunk or one whole completion document. */
+    private fun deltaOf(root: kotlinx.serialization.json.JsonObject): ChunkDelta {
         val usage = runCatching { root["usage"]?.jsonObject }.getOrNull()
         val choice = runCatching { root["choices"]?.jsonArray?.firstOrNull()?.jsonObject }.getOrNull()
         val delta = runCatching { choice?.get("delta")?.jsonObject }.getOrNull()

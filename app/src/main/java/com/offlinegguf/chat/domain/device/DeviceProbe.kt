@@ -47,6 +47,7 @@ object DeviceProbe {
             totalStorageBytes = storage.second,
             pageSizeBytes = pageSizeBytes(),
             lowRamDevice = lowRam,
+            performanceCores = performanceCores(cores),
             engineAvailable = engineAvailable,
         )
     }
@@ -80,6 +81,45 @@ object DeviceProbe {
     }.getOrDefault(0.0)
 
     /**
+     * How many cores sit in the fastest clock bin — the "big" cluster on a
+     * big.LITTLE SoC. Read from sysfs the same defensive way as [maxCpuMhz].
+     *
+     * Returns 0 when the kernel hides frequencies (then callers fall back to
+     * all cores), and 0 when every core reports the same clock (a uniform CPU
+     * has no little cluster to avoid).
+     */
+    fun performanceCores(cores: Int): Int = runCatching {
+        if (cores <= 2) return 0
+        val root = File("/sys/devices/system/cpu")
+        val clocks = (0 until cores).map { index ->
+            val node = File(root, "cpu$index/cpufreq/cpuinfo_max_freq")
+            if (node.canRead()) node.readText().trim().toLongOrNull() ?: 0L else 0L
+        }
+        performanceCoresFromClocks(clocks)
+    }.getOrDefault(0)
+
+    /**
+     * Core count of the fastest cpufreq cluster, from each core's max clock.
+     *
+     * Clusters share one frequency table, so "the big cores" are exactly the
+     * cores at the top clock. A percentage *band* is wrong here: a Helio G85
+     * runs its two A75s at 2.0 GHz and six A55s at 1.8 GHz — only 10% apart in
+     * clock, but nowhere near equal in work per second. Counting by equality
+     * (with a small tolerance for table rounding) picks the 2 real cores.
+     *
+     * Returns 0 for a uniform CPU, or when the clocks are unreadable, which
+     * callers read as "no cluster information".
+     */
+    fun performanceCoresFromClocks(clocks: List<Long>): Int {
+        if (clocks.size <= 2) return 0
+        if (clocks.any { it <= 0L }) return 0
+        val fastest = clocks.maxOrNull() ?: 0L
+        if (fastest <= 0L) return 0
+        val big = clocks.count { it >= (fastest * 0.95).toLong() }
+        return if (big >= clocks.size) 0 else big
+    }
+
+    /**
      * Kernel page size. Almost always 4096, but 16 KB page devices exist and a
      * native library linked without `max-page-size=16384` will not load there —
      * which is exactly what the diagnostics card wants to be able to explain.
@@ -101,6 +141,9 @@ object DeviceProbe {
     fun describe(profile: DeviceProfile): String = buildString {
         append("${(profile.ramBytes / (1024.0 * 1024 * 1024)).let { String.format(java.util.Locale.US, "%.1f", it) }} GB RAM")
         append(" · ${profile.cores} cores")
+        if (profile.performanceCores in 1..profile.cores) {
+            append(" (${profile.performanceCores} performance)")
+        }
         append(" · ${profile.tier.label}")
         if (profile.maxCpuMhz > 0) append(" · ${profile.maxCpuMhz.toInt()} MHz")
     }

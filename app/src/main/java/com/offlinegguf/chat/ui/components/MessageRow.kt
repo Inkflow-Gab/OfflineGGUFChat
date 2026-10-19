@@ -65,6 +65,7 @@ fun MessageRow(
     canContinue: Boolean = false,
     onContinue: () -> Unit = {},
     onSaveCode: (content: String, fileName: String) -> Unit = { _, _ -> },
+    onRunCode: ((content: String, fileName: String, language: String) -> Unit)? = null,
     onEdit: () -> Unit = {},
     onDeleteFrom: () -> Unit = {},
     /** Fade and rise into place. Callers set this only for the newest message. */
@@ -99,6 +100,7 @@ fun MessageRow(
                     canContinue = canContinue,
                     onContinue = onContinue,
                     onSaveCode = onSaveCode,
+                    onRunCode = onRunCode,
                     onDeleteFrom = onDeleteFrom,
                 )
             }
@@ -174,6 +176,7 @@ private fun AssistantMessage(
     canContinue: Boolean,
     onContinue: () -> Unit,
     onSaveCode: (content: String, fileName: String) -> Unit,
+    onRunCode: ((content: String, fileName: String, language: String) -> Unit)?,
     onDeleteFrom: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -256,7 +259,9 @@ private fun AssistantMessage(
                     text = message.content,
                     previousCode = previousCode,
                     showLineNumbers = showLineNumbers,
+                    streaming = streaming,
                     onSaveCode = onSaveCode,
+                    onRunCode = onRunCode,
                 )
                 if (streaming) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

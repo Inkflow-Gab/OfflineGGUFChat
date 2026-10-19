@@ -26,6 +26,8 @@ data class CloudUiState(
     val notice: String? = null,
     val query: String = "",
     val freeOnly: Boolean = true,
+    /** Show free models that only work inside the provider's own app. */
+    val showAppOnly: Boolean = false,
     val customBaseUrl: String = "",
     val activeTarget: CloudTarget? = null,
 ) {
@@ -37,12 +39,16 @@ data class CloudUiState(
     val visibleModels: List<CloudModel>
         get() = models.filter { model ->
             (!freeOnly || model.isFree) &&
+                (showAppOnly || !model.appOnly) &&
                 (query.isBlank() ||
                     model.displayName.contains(query, ignoreCase = true) ||
                     model.id.contains(query, ignoreCase = true))
         }
 
-    val freeCount: Int get() = models.count { it.isFree }
+    val freeCount: Int get() = models.count { it.isFree && !it.appOnly }
+
+    /** Free models the provider will not serve to this app; badged and hidden by default. */
+    val appOnlyCount: Int get() = models.count { it.appOnly }
 }
 
 /**
@@ -61,6 +67,14 @@ class CloudViewModel(private val container: AppContainer) : ViewModel() {
     /** Stored keys by provider id, used to refill the field on provider switch. */
     private var storedKeys: Map<String, String> = emptyMap()
 
+    /**
+     * Per-provider draft of what has been typed, mirroring DataStore in memory.
+     * Switching providers swaps the field instantly from here — the key you
+     * typed for one provider is never lost when you hop to another, even in the
+     * milliseconds before the DataStore write round-trips back.
+     */
+    private val drafts: MutableMap<String, String> = mutableMapOf()
+
     init {
         viewModelScope.launch {
             container.settings.settings.collect { settings ->
@@ -78,11 +92,18 @@ class CloudViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             container.settings.cloudApiKeys.collect { keys ->
                 storedKeys = keys
+                keys.forEach { (providerId, key) ->
+                    if (!drafts.containsKey(providerId)) drafts[providerId] = key
+                }
                 // Refill only when the field still shows the previously stored
                 // value (or nothing), so typing is never overwritten mid-stream.
                 _state.update { current ->
-                    val stored = keys[current.providerId].orEmpty()
-                    if (current.keyDraft.isBlank()) current.copy(keyDraft = stored) else current
+                    val draft = drafts[current.providerId].orEmpty()
+                    if (current.keyDraft.isBlank() || current.keyDraft == storedKeys[current.providerId]) {
+                        current.copy(keyDraft = draft)
+                    } else {
+                        current
+                    }
                 }
                 maybeAutoFetch()
             }
@@ -98,10 +119,20 @@ class CloudViewModel(private val container: AppContainer) : ViewModel() {
 
     fun selectProvider(providerId: String) {
         if (providerId == _state.value.providerId) return
+        val previous = _state.value
+        // Flush whatever was typed under the old provider before swapping, so a
+        // quick "type key, switch provider" can never file the key under the
+        // wrong id or drop it.
+        if (previous.keyDraft.isNotBlank()) {
+            drafts[previous.providerId] = previous.keyDraft
+            viewModelScope.launch {
+                container.settings.setCloudApiKey(previous.providerId, previous.keyDraft)
+            }
+        }
         _state.update {
             it.copy(
                 providerId = providerId,
-                keyDraft = storedKeys[providerId].orEmpty(),
+                keyDraft = drafts[providerId] ?: storedKeys[providerId].orEmpty(),
                 error = null,
             )
         }
@@ -112,9 +143,11 @@ class CloudViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun onKeyChange(value: String) {
+        val providerId = _state.value.providerId
+        drafts[providerId] = value
         _state.update { it.copy(keyDraft = value) }
         viewModelScope.launch {
-            container.settings.setCloudApiKey(_state.value.providerId, value)
+            container.settings.setCloudApiKey(providerId, value)
         }
     }
 
@@ -128,6 +161,11 @@ class CloudViewModel(private val container: AppContainer) : ViewModel() {
     fun setFreeOnly(value: Boolean) {
         _state.update { it.copy(freeOnly = value) }
         viewModelScope.launch { container.settings.setCloudFreeOnly(value) }
+    }
+
+    /** App-only free models stay hidden until the user asks to see them. */
+    fun setShowAppOnly(value: Boolean) {
+        _state.update { it.copy(showAppOnly = value) }
     }
 
     fun consumeNotice() = _state.update { it.copy(notice = null) }
@@ -155,12 +193,27 @@ class CloudViewModel(private val container: AppContainer) : ViewModel() {
                 apiKey = current.keyDraft.trim(),
             )
             result.onSuccess { models ->
+                // If the selected model turns out to be app-only (for example the
+                // old Zen free lineup), stop pointing the Chat tab at a model that
+                // is guaranteed to refuse, and say why. Nothing worse than a dead
+                // selection that only fails after the user types a question.
+                val stuck = current.activeTarget
+                    ?.takeIf { it.providerId == provider.id }
+                    ?.let { target -> models.firstOrNull { it.id == target.modelId } }
+                    ?.takeIf { it.appOnly }
+                if (stuck != null) container.settings.setCloudTarget(null)
+                val usableFree = models.count { it.isFree && !it.appOnly }
                 _state.update {
                     it.copy(
                         loading = false,
                         models = models,
                         modelsProviderId = provider.id,
-                        notice = "${provider.label}: ${models.size} models, ${models.count { m -> m.isFree }} free.",
+                        notice = if (stuck != null) {
+                            "“${stuck.displayName}” only runs inside ${provider.label}'s own app, " +
+                                "so it was unpicked. Choose another model or a free provider."
+                        } else {
+                            "${provider.label}: ${models.size} models, $usableFree free."
+                        },
                     )
                 }
             }.onFailure { failure ->
@@ -184,7 +237,15 @@ class CloudViewModel(private val container: AppContainer) : ViewModel() {
             container.settings.setCloudTarget(target)
             container.settings.setCloudEnabled(true)
             _state.update {
-                it.copy(notice = "Now chatting with ${model.displayName} via ${current.provider.label}. Open the Chat tab.")
+                it.copy(
+                    notice = if (model.appOnly) {
+                        "“${model.displayName}” only works inside ${current.provider.label}'s own app — " +
+                            "it will be refused here. Pick a paid Zen model, or Groq/OpenRouter/NVIDIA " +
+                            "for free chat."
+                    } else {
+                        "Now chatting with ${model.displayName} via ${current.provider.label}. Open the Chat tab."
+                    },
+                )
             }
         }
     }

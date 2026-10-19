@@ -170,13 +170,17 @@ object ModelFit {
         if (reduced) {
             warnings += "Context dropped to $context tokens to fit in the ~${Formats.bytes(budget)} this phone can give a model."
         }
-        // If even 512 does not fit, try a cheaper KV cache before giving up.
+        // If the f16 cache does not fit, switch to q8_0 for real — not just in
+        // the estimate. Previously this only changed the displayed number while
+        // the loader still allocated f16, so the advice could never be followed.
+        var effectiveKvType = kvType
         if (weights + kvBytes + RUNTIME_OVERHEAD > budget && kvType != "q8_0" && kvPerToken > 0) {
             val cheapPerToken = kvBytesPerToken(spec, "q8_0")
             val cheapKv = context.toLong() * cheapPerToken
             if (weights + cheapKv + RUNTIME_OVERHEAD <= budget) {
                 kvBytes = cheapKv
-                notes += "Quantised KV cache (q8_0) keeps this within budget; enable it in model settings."
+                effectiveKvType = "q8_0"
+                notes += "Quantised KV cache (q8_0) is used to stay within budget."
             }
         }
 
@@ -235,7 +239,7 @@ object ModelFit {
 
         return Assessment(
             verdict = verdict,
-            settings = Settings(context, threads, batch, kvType),
+            settings = Settings(context, threads, batch, effectiveKvType),
             weightBytes = spec.weightBytes,
             kvBytes = kvBytes,
             overheadBytes = RUNTIME_OVERHEAD,

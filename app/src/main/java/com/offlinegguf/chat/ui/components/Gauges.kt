@@ -1,6 +1,7 @@
 package com.offlinegguf.chat.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -10,6 +11,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,7 +24,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -36,9 +37,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.offlinegguf.chat.R
 import com.offlinegguf.chat.domain.fit.ModelFit
@@ -48,30 +57,81 @@ import com.offlinegguf.chat.ui.theme.OfflineGgufTheme
 import com.offlinegguf.chat.util.Formats
 
 /**
- * The "it is working" indicator: a 2 dp rule that sweeps while tokens arrive.
+ * The "it is working" indicator: a thin rule with a comet of light sweeping
+ * across it while tokens arrive.
  *
  * A spinner would imply the app is stuck; a progress bar would imply we know how
- * far along we are. Neither is true, so this is deliberately just motion at the
- * top of the answer.
+ * far along we are. Neither is true, so this is deliberately just motion along
+ * the answer — the comet glides and wraps instead of bouncing back and forth.
  */
 @Composable
 fun StreamingRule(active: Boolean, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
+    val motion = OfflineGgufTheme.motion
     AnimatedVisibility(
         visible = active,
-        enter = fadeIn(tween(OfflineGgufTheme.motion.fast)),
-        exit = fadeOut(tween(OfflineGgufTheme.motion.fast)),
+        enter = fadeIn(tween(motion.fast)),
+        exit = fadeOut(tween(motion.fast)),
         modifier = modifier.fillMaxWidth(),
     ) {
-        LinearProgressIndicator(
-            modifier = Modifier.fillMaxWidth().height(2.dp),
-            color = colors.primary,
-            trackColor = colors.surfaceContainerHigh,
-        )
+        if (motion.reduced) {
+            Box(Modifier.fillMaxWidth().height(2.dp)) {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .background(colors.surfaceContainerHigh),
+                )
+                Box(
+                    Modifier
+                        .fillMaxWidth(0.3f)
+                        .height(2.dp)
+                        .background(colors.onSurface),
+                )
+            }
+        } else {
+            val transition = rememberInfiniteTransition(label = "stream-rule")
+            val phase by transition.animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1_100, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart,
+                ),
+                label = "stream-rule-phase",
+            )
+            Canvas(Modifier.fillMaxWidth().height(2.dp)) {
+                drawRect(color = colors.surfaceContainerHigh)
+                val comet = size.width * 0.3f
+                val x = (size.width + comet) * phase - comet
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            colors.onSurface.copy(alpha = 0f),
+                            colors.onSurface,
+                            colors.onSurface.copy(alpha = 0f),
+                        ),
+                        startX = x,
+                        endX = x + comet,
+                    ),
+                    topLeft = Offset(x, 0f),
+                    size = Size(comet, size.height),
+                )
+            }
+        }
     }
 }
 
-/** Three staggered dots signal local inference without implying a known ETA. */
+/** Frames of the thinking glyph: a braille wave that reads as "processing". */
+private val THINKING_FRAMES = listOf("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
+
+/**
+ * The "it is thinking" indicator: a braille symbol cycling like a spinner,
+ * beside a label a band of light shimmers across.
+ *
+ * This replaces the old three bouncing dots, which read as loading rather than
+ * as thinking. Under "Reduce motion" the glyph stands still and the label is
+ * solid — the state is still legible without any movement at all.
+ */
 @Composable
 fun ThinkingPulse(
     label: String? = null,
@@ -79,37 +139,75 @@ fun ThinkingPulse(
 ) {
     val colors = MaterialTheme.colorScheme
     val motion = OfflineGgufTheme.motion
-    val transition = if (motion.reduced) null else rememberInfiniteTransition()
+    val reduced = motion.reduced
+
+    val frame = if (reduced) {
+        0
+    } else {
+        val transition = rememberInfiniteTransition(label = "thinking-glyph")
+        val progress by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = THINKING_FRAMES.size.toFloat(),
+            animationSpec = infiniteRepeatable(
+                animation = tween(900, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "thinking-frame",
+        )
+        progress.toInt().coerceIn(0, THINKING_FRAMES.lastIndex)
+    }
+
+    val shimmer = if (reduced || label == null) {
+        null
+    } else {
+        val transition = rememberInfiniteTransition(label = "thinking-shimmer")
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1_200, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "thinking-shimmer-phase",
+        ).value
+    }
 
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
+        Text(
+            text = THINKING_FRAMES[frame],
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onSurface,
+            fontFamily = FontFamily.Monospace,
+        )
         if (label != null) {
-            Text(label, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-        }
-        repeat(3) { index ->
-            val alpha = if (transition != null) {
-                val animated by transition.animateFloat(
-                    initialValue = 0.25f,
-                    targetValue = 1f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(durationMillis = 720, delayMillis = index * 150),
-                        repeatMode = RepeatMode.Reverse,
-                    ),
-                    label = "thinking-dot-$index",
-                )
-                animated
-            } else 1f
-            Box(
-                Modifier
-                    .size(6.dp)
-                    .background(colors.onSurfaceVariant.copy(alpha = alpha), CircleShape),
+            Text(
+                text = shimmerAnnotated(label, shimmer, colors.onSurfaceVariant),
+                style = MaterialTheme.typography.bodySmall,
             )
         }
     }
 }
+
+/** Per-character alpha band travelling left → right; null [phase] is solid. */
+private fun shimmerAnnotated(text: String, phase: Float?, base: Color): AnnotatedString =
+    buildAnnotatedString {
+        if (phase == null) {
+            withStyle(SpanStyle(color = base)) { append(text) }
+            return@buildAnnotatedString
+        }
+        val n = text.length.coerceAtLeast(1)
+        text.forEachIndexed { index, char ->
+            val position = index.toFloat() / n
+            val delta = phase - position
+            val glow = if (delta in 0f..0.25f) 1f - (delta / 0.25f) else 0f
+            val alpha = (0.5f + 0.5f * glow).coerceIn(0f, 1f)
+            withStyle(SpanStyle(color = base.copy(alpha = alpha))) { append(char) }
+        }
+    }
 
 /** Blinking text caret, shown at the end of a streaming answer. */
 @Composable

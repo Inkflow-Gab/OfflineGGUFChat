@@ -31,6 +31,10 @@ class ThinkingParser {
 
     private val markers = listOf(
         Marker("<think>", "</think>"),
+        // Qwen3 opens its block with "<think" and a newline; there is no ">".
+        // Matching the newline keeps the tag fully consumed, which a bare
+        // "<think" prefix does not: it would leave the ">" in the answer.
+        Marker("<think\n", "</think>"),
         Marker("<thinking>", "</thinking>"),
         Marker("<|thinking|>", "<|/thinking|>"),
         Marker("<reasoning>", "</reasoning>"),
@@ -114,7 +118,7 @@ class ThinkingParser {
         // tag: models mix them up, and getting stuck in THINKING is worse.
         Channel.THINKING -> {
             val specific = active?.close
-            if (specific != null) listOf(specific, toggle) + markers.map { it.close }
+            if (specific != null) listOf(specific) + markers.map { it.close } + toggle
             else markers.map { it.close } + toggle
         }
     }
@@ -126,7 +130,11 @@ class ThinkingParser {
         for (candidate in candidates) {
             if (candidate.isEmpty()) continue
             val index = haystack.indexOfLiteral(candidate)
-            if (index >= 0 && (best == null || index < best.index)) {
+            val current = best
+            if (index < 0) continue
+            if (current == null || index < current.index ||
+                (index == current.index && candidate.length > current.text.length)
+            ) {
                 best = Match(index, candidate)
             }
         }
@@ -202,7 +210,7 @@ class ThinkingParser {
         /** True when a block of text contains any known reasoning marker. */
         fun looksLikeReasoning(text: String): Boolean {
             val lower = text.lowercase()
-            return lower.contains("<think>") || lower.contains("<thinking>") ||
+            return lower.contains("<think") ||
                 lower.contains("<reasoning>") || lower.contains("<|reasoning|>") ||
                 text.contains("***/")
         }

@@ -3,7 +3,8 @@
 A quiet, black-and-white Android app for talking to GGUF language models that live
 on your phone. No account, no API key, no phoning home: on-device inference is the
 default and the identity of the app. Since 1.4 there is also an *optional* Cloud
-tab — bring your own free key (OpenRouter, Groq, NVIDIA) — which is off until you
+tab — bring your own key (free tiers on OpenRouter, Gemini, Groq, Cerebras,
+Mistral and NVIDIA; OpenCode Console pay-as-you-go) — which is off until you
 turn it on, and the only thing in the app that can open a socket.
 
 ```
@@ -103,13 +104,59 @@ holds code, diffs and gauges does not need a fourth visual channel. See
 
 **Cloud (opt-in, off by default)**
 
-- OpenRouter, Groq, NVIDIA, or any OpenAI-compatible server (llama.cpp /
-  LM Studio / Ollama on your LAN). Paste a free API key, browse the live
+- OpenRouter, **Google Gemini**, Groq, **Cerebras**, **Mistral**, NVIDIA,
+  OpenCode Console, or any OpenAI-compatible server (llama.cpp / LM Studio /
+  Ollama on your LAN). Paste an API key, browse the live
   model list with **FREE badges**, a free-only filter, prices and context
-  sizes, then tap a model to chat with it. Streaming, the thinking channel,
-  stop/continue/regenerate and the transcript all behave exactly like a
-  local model. Keys live in app-private storage, outside the settings
+  sizes, then tap a model to chat with it. OpenCode's free models are labelled
+  **IN-APP ONLY**: they answer 403 outside the OpenCode app by OpenCode's own
+  policy, so the picker hides them by default, explains the refusal if you run
+  one anyway, and points at free providers that do work. Streaming, the
+  thinking channel, stop/continue/regenerate and the transcript all behave
+  exactly like a local model. Keys live in app-private storage, outside the settings
   snapshot, and are sent only to the provider you picked.
+
+**Workspace + web sandbox (per session)**
+
+- Every session history gets its own workspace: snippets saved from answers
+  and pages saved from the sandbox live there, keyed by name, and never leak
+  into other chats. Re-saving `index.html` updates the one file.
+- HTML, CSS and JS code blocks carry a ▶ button that runs them in a locked-down
+  WebView: JavaScript on, but the network, file system and DOM storage off —
+  even `fetch()` cannot phone home. `console.log` is mirrored into the page.
+
+**Slow first answer? It tells you where the time went**
+
+- Every generation logs one line and keeps it under *⋮ → Generation details*:
+  prompt tokens, tokenize/prefill time, time-to-first-token, first time text was
+  on screen, decode speed, thread count, context, batch, and how many times the
+  model was loaded.
+- `adb logcat -s InferenceTrace OfflineGGUF` shows it live. A 28-token "hello"
+  that takes minutes prints its verdict: hidden reasoning, slow decode, or
+  prompt evaluation.
+- Reasoning is **off by default** for models that have it (Qwen3 and friends).
+  Turning it on is one menu tap; the app switches the model's own template, it
+  does not strip tokens after the fact. Off, a greeting is answered directly.
+- The model is loaded once and reused: opening an old chat no longer re-reads
+  the weights or discards the KV cache.
+
+**Fast on a phone, not just correct**
+
+- Inference runs on the **performance cores**. ggml waits for its slowest worker,
+  so putting threads on a 6×A55 cluster makes every matmul finish at little-core
+  speed — the app reads the CPU clock bins and keeps workers on the big cluster.
+- Reading the prompt and writing the answer use **different** thread counts.
+  Prompt processing is throughput-bound and takes every spare core; per-token
+  decoding is latency-bound and stays on the big cluster. On a 2+6 phone that
+  is 7 workers for the prompt and 2 for the reply, and both numbers are in
+  Generation details (`threads` shows `2/7`).
+- The whole native engine is built `-O3` (ggml's hot loops are C, not C++), KV
+  cache defaults to q8_0 when the phone is tight on RAM, and prompt batches got
+  larger so prefill needs fewer decode calls.
+- Generation stops at the model's own turn-end token instead of running on to
+  the token cap, so answers finish cleanly and quickly.
+- Qwen3-style ` thinking` blocks are recognised as reasoning even without the
+  closing angle bracket, so they never leak into the answer.
 
 **Navigation**
 
@@ -193,7 +240,8 @@ app/src/main/java/com/offlinegguf/chat/
   util/         formatting, streaming UTF-8 decoder, diff engine, markdown blocks
   data/gguf/    GGUF types + the sequential header reader
   data/catalog/ bundled model catalogue and the device-aware advisor
-  data/cloud/   opt-in OpenAI-compatible providers (OpenRouter/Groq/NVIDIA/custom)
+  data/cloud/   opt-in OpenAI-compatible providers (OpenRouter/Groq/NVIDIA/OpenCode Zen/custom)
+  data/workspace/  per-session workspace files + the sandbox document shell
   data/local/   Room entities, DAOs, database
   data/settings/DataStore-backed preferences
   data/repository/  model, chat and skill repositories
@@ -203,7 +251,8 @@ app/src/main/java/com/offlinegguf/chat/
   inference/    JNI bindings, stream coalescer, thinking parser, prompt templates
   ui/theme/     ink palette, type scale, motion spec, spacing grid
   ui/components/code block, markdown, message row, gauges, input bar
-  ui/screens/   chat, models, model detail, discover, cloud, skills, settings, history
+  ui/screens/   chat, models, model detail, discover, cloud, skills, settings, history,
+                workspace, sandbox
   viewmodel/    one per screen
 app/src/test/   JVM unit tests (no emulator, no mocking framework)
 app/cpp/        GGUF probe, UTF-8 framer, JNI layer, two engine bridges

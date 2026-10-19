@@ -20,6 +20,13 @@ data class DeviceProfile(
     val pageSizeBytes: Long,
     /** `ActivityManager.isLowRamDevice` — a stronger signal than the RAM total. */
     val lowRamDevice: Boolean = false,
+    /**
+     * Cores clocked near the top bin, i.e. the "big" half of a big.LITTLE SoC.
+     * 0 when sysfs hid the clocks. Inference runs on these only: ggml splits
+     * each op across all workers and waits for the slowest, so adding little
+     * cores to a 2×A75 + 6×A55 phone makes every matmul finish at A55 speed.
+     */
+    val performanceCores: Int = 0,
     /** True when the native engine was compiled into this build. */
     val engineAvailable: Boolean,
 ) {
@@ -30,17 +37,33 @@ data class DeviceProfile(
     val isArm64: Boolean get() = abiList.any { it == "arm64-v8a" }
 
     /**
-     * Keep a core available for Android/UI. On a one- or two-core phone, use
-     * fewer workers rather than forcing two threads and starving the foreground.
+     * Workers for llama.cpp.
+     *
+     * Three rules, each learned from the slow-response bug:
+     *  - never one thread on a multi-core phone (1 thread made a 0.6B model
+     *    decode several times slower);
+     *  - run on the performance cores, not the little ones (ggml barriers wait
+     *    for the slowest worker, so mixing clusters is a net loss);
+     *  - leave a core for Android/UI.
      */
     val suggestedThreads: Int
-        get() = if (lowRamDevice) 1 else (cores - 1).coerceIn(1, 4)
+        get() {
+            if (cores <= 2) return 1
+            val usable = if (performanceCores in 2..cores) performanceCores else cores
+            val leavingOne = if (usable >= cores) cores - 1 else usable
+            return leavingOne.coerceIn(2, 4)
+        }
 
-    /** Smaller prompt batches reduce temporary allocations on memory-tight phones. */
+    /**
+     * Prompt-evaluation batch. Prefill is chunked by this, so a bigger batch
+     * means fewer llama_decode calls for the same prompt — the cheapest
+     * first-token win there is. Still stepped down on memory-tight phones
+     * because the batch buffers are transient allocations on top of the KV cache.
+     */
     val suggestedBatch: Int
         get() = when {
-            lowRamDevice || ramBytes < RAM_3GB -> 64
-            ramBytes < RAM_4GB -> 128
+            lowRamDevice || ramBytes < RAM_3GB -> 128
+            ramBytes < RAM_4GB -> 256
             else -> 512
         }
 
@@ -90,6 +113,7 @@ data class DeviceProfile(
             freeStorageBytes = 8L * 1024 * 1024 * 1024,
             totalStorageBytes = 64L * 1024 * 1024 * 1024,
             pageSizeBytes = 4096,
+            performanceCores = 0,
             engineAvailable = false,
         )
     }

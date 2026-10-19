@@ -41,6 +41,14 @@ data class AppSettings(
 
     // ---- chat behaviour ----
     val showThinking: Boolean = true,
+    /**
+     * Ask local reasoning models (Qwen3 and friends) to think before answering.
+     *
+     * Off by default: on a phone a hidden reasoning block is the difference
+     * between a second and several minutes before anything readable appears.
+     * The model's own template is used to switch it off — nothing is stripped.
+     */
+    val localReasoning: Boolean = false,
     val chatMode: ChatMode = ChatMode.BALANCED,
     val keepScreenOn: Boolean = false,
     val autoLoadLastModel: Boolean = true,
@@ -105,12 +113,19 @@ data class AppSettings(
     )
 
     companion object {
+        /**
+         * Kept short on purpose: it is re-sent (and, with a KV miss, re-evaluated)
+         * on every turn, so every sentence here costs time. It earns its place by
+         * steering small models toward the behaviour they get wrong on their own —
+         * burying the answer, switching language, and inventing APIs.
+         */
         const val DEFAULT_SYSTEM_PROMPT =
             "You are a concise, practical assistant running entirely on this device. " +
-                "Answer directly, prefer short paragraphs and lists, and put code in fenced blocks. " +
-                "Use the supplied conversation as evidence; do not invent facts, citations, APIs, " +
-                "or test results. Separate facts from assumptions and say when you are unsure. " +
-                "You have no live web access."
+                "Answer in the same language the user writes in. Lead with the answer, then only " +
+                "the explanation it needs; use short paragraphs, lists and fenced code blocks. " +
+                "Use the conversation as evidence; never invent facts, citations, APIs or test " +
+                "results, and say when you are unsure. If a request is genuinely ambiguous, ask " +
+                "one short question instead of guessing. You have no live web access."
 
         const val DEFAULT_MAX_DOWNLOAD_BYTES = 8L * 1024 * 1024 * 1024
     }
@@ -134,6 +149,7 @@ class SettingsStore(private val context: Context) {
         val SHOW_LINE_NUMBERS = booleanPreferencesKey("show_line_numbers")
 
         val SHOW_THINKING = booleanPreferencesKey("show_thinking")
+        val LOCAL_REASONING = booleanPreferencesKey("local_reasoning")
         val CHAT_MODE = stringPreferencesKey("chat_mode")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         val AUTO_LOAD_LAST = booleanPreferencesKey("auto_load_last_model")
@@ -182,6 +198,7 @@ class SettingsStore(private val context: Context) {
                 highContrast = prefs[Keys.HIGH_CONTRAST] ?: false,
                 showLineNumbers = prefs[Keys.SHOW_LINE_NUMBERS] ?: true,
                 showThinking = prefs[Keys.SHOW_THINKING] ?: true,
+                localReasoning = prefs[Keys.LOCAL_REASONING] ?: false,
                 chatMode = ChatMode.fromName(prefs[Keys.CHAT_MODE]),
                 keepScreenOn = prefs[Keys.KEEP_SCREEN_ON] ?: false,
                 autoLoadLastModel = prefs[Keys.AUTO_LOAD_LAST] ?: true,
@@ -213,6 +230,8 @@ class SettingsStore(private val context: Context) {
         }
 
     suspend fun setThemeMode(mode: ThemeMode) = edit { it[Keys.THEME_MODE] = mode.name }
+
+    suspend fun setLocalReasoning(enabled: Boolean) = edit { it[Keys.LOCAL_REASONING] = enabled }
     suspend fun setFontScale(scale: Float) = edit { it[Keys.FONT_SCALE] = scale.coerceIn(0.85f, 1.35f) }
     suspend fun setReduceMotion(value: Boolean) = edit { it[Keys.REDUCE_MOTION] = value }
     suspend fun setHighContrast(value: Boolean) = edit { it[Keys.HIGH_CONTRAST] = value }
