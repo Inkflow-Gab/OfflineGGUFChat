@@ -36,6 +36,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -77,6 +78,20 @@ data class ChatUiState(
 
     val title: String get() = conversation?.title?.takeIf { it.isNotBlank() } ?: "New chat"
 }
+
+/** Mirrors the process-wide engine into this screen's independent ViewModel. */
+internal fun ChatUiState.withLoadedModel(
+    model: LocalModelEntity?,
+    contextSize: Int = 0,
+    contextUsed: Int = 0,
+): ChatUiState = copy(
+    model = model,
+    loadingModel = false,
+    contextSize = contextSize.coerceAtLeast(0),
+    contextUsed = contextUsed.coerceIn(0, contextSize.coerceAtLeast(0)),
+    error = if (model == null) error else null,
+    fit = if (model == null) null else fit,
+)
 
 /**
  * Drives the chat screen: transcript, generation, feedback and context hygiene.
@@ -130,6 +145,7 @@ class ChatViewModel(
         }
         drainPendingSkill()
         drainPendingPrompt()
+        observeLoadedModel()
     }
 
     /**
@@ -159,6 +175,53 @@ class ChatViewModel(
                 container.clearPendingSkill()
                 val skill = container.skillRepository.bySlug(slug)
                 if (skill != null) selectSkill(skill)
+            }
+        }
+    }
+
+    /**
+     * A model can be loaded from the separate Model Detail screen while this
+     * ChatViewModel remains alive in the tab back stack. Previously the native
+     * engine loaded successfully but this screen's local `model` stayed null,
+     * leaving the "Pick a model" onboarding in place and blocking Send.
+     */
+    private fun observeLoadedModel() {
+        viewModelScope.launch {
+            var previousPath = engine.loadedPath
+            engine.loadedModelPath.collectLatest { path ->
+                if (path.isNullOrBlank()) {
+                    val unloadedPath = previousPath
+                    previousPath = null
+                    if (unloadedPath != null) {
+                        _state.update { current ->
+                            if (current.model?.path == unloadedPath) current.withLoadedModel(null) else current
+                        }
+                    }
+                    return@collectLatest
+                }
+
+                previousPath = path
+                val model = models.byPath(path) ?: return@collectLatest
+                if (!File(path).isFile) return@collectLatest
+                val probe = runCatching { models.probe(File(path)) }.getOrNull()
+                val report = engine.report()
+                // Ignore a slow DB/header read if the user switched models meanwhile.
+                if (engine.loadedPath != path || !engine.isLoaded) return@collectLatest
+                val fit = probe?.let { ModelFit.assess(container.deviceProfile, it.toSpec()) }
+                _state.update { current ->
+                    if (engine.loadedPath != path) current
+                    else current.withLoadedModel(
+                        model = model,
+                        contextSize = report.contextSize,
+                        contextUsed = report.contextUsed,
+                    ).copy(
+                        fit = fit,
+                        templateStyle = PromptFormatter.detect(
+                            architecture = probe?.architecture ?: model.architecture,
+                            chatTemplate = report.chatTemplate.ifBlank { probe?.chatTemplate.orEmpty() },
+                        ),
+                    )
+                }
             }
         }
     }
@@ -243,7 +306,6 @@ class ChatViewModel(
             val assessment = ModelFit.assess(container.deviceProfile, probe.toSpec())
             _state.update {
                 it.copy(
-                    model = model,
                     fit = assessment,
                     templateStyle = PromptFormatter.detect(probe.architecture, probe.chatTemplate),
                 )
@@ -284,6 +346,7 @@ class ChatViewModel(
                 val report = result.report
                 _state.update {
                     it.copy(
+                        model = model,
                         loadingModel = false,
                         contextSize = if (report.contextSize > 0) report.contextSize else tuned.context,
                         contextUsed = report.contextUsed,

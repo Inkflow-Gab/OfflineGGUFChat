@@ -9,6 +9,9 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -86,10 +89,15 @@ class NativeLlamaEngine : Closeable {
 
     val isGenerating: Boolean get() = generating.get()
 
-    val loadedPath: String? get() = currentPath
+    /**
+     * Single source of truth for the model resident in the process-wide engine.
+     * Screens have separate ViewModels; this stream keeps Chat in sync when a
+     * model is loaded from Model Detail (or unloaded from Settings).
+     */
+    private val _loadedModelPath = MutableStateFlow<String?>(null)
+    val loadedModelPath: StateFlow<String?> = _loadedModelPath.asStateFlow()
 
-    @Volatile
-    private var currentPath: String? = null
+    val loadedPath: String? get() = _loadedModelPath.value
 
     /** Header check that does not require loading anything. */
     fun probe(path: String, budgetBytes: Long = 8L * 1024 * 1024): String? =
@@ -118,7 +126,7 @@ class NativeLlamaEngine : Closeable {
                 // previous weights stay mapped and the process gets killed.
                 if (runCatching { LlamaNative.nativeIsLoaded(session) }.getOrDefault(false)) {
                     runCatching { LlamaNative.nativeUnloadModel(session) }
-                    currentPath = null
+                    _loadedModelPath.value = null
                 }
 
                 val ok = runCatching {
@@ -142,7 +150,7 @@ class NativeLlamaEngine : Closeable {
                         .getOrDefault("model failed to load")
                     return@withLock LoadResult(false, message.ifBlank { "model failed to load" }, ModelReport.Empty, elapsed)
                 }
-                currentPath = request.path
+                _loadedModelPath.value = request.path
                 LoadResult(true, null, reportLocked(session), elapsed)
             }
         }
@@ -155,7 +163,7 @@ class NativeLlamaEngine : Closeable {
             mutex.withLock {
                 requestStop()
                 runCatching { LlamaNative.nativeUnloadModel(session) }
-                currentPath = null
+                _loadedModelPath.value = null
             }
         }
     }
@@ -299,6 +307,7 @@ class NativeLlamaEngine : Closeable {
             // in-flight decode to finish before freeing anything.
             runCatching { LlamaNative.nativeDestroySession(session) }
         }
+        _loadedModelPath.value = null
         executor.shutdown()
     }
 }
